@@ -79,10 +79,10 @@ def vgg16(stochastic, device, orthogonal):
     if stochastic:
         return _vgg('D', device, orthogonal)
     else:
-        return deterministic_vgg.vgg16_bn()
+        return deterministic_vgg.vgg16_bn(num_classes=10)
 
 def vgg11(stochastic, device):
     if stochastic:
         return _vgg('A', device)
     else:
-        return deterministic_vgg.vgg11_bn()
+        return deterministic_vgg.vgg11_bn(num_classes=10)

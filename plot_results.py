@@ -1,5 +1,6 @@
 from collections import defaultdict
 import csv
+import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -28,14 +29,14 @@ def main(results_file):
     for index, metrics_dict in groups.items():
         for metric, data in metrics_dict.items():
             cfgs = list(map(lambda d: 'det' if d[2] == 'False' else d[-1], data))
-            xpos = np.arange(len(cfgs))
+            xpos = np.arange(len(cfgs)-1)
             means = list(map(lambda d: d[0], data))
             stds = list(map(lambda d: d[1], data))
             fig, ax = plt.subplots()
-            ax.bar(xpos, means, yerr=stds, align='center', alpha=0.5,
-                    ecolor='black', capsize=10)
+            ax.errorbar(xpos, means[1:], yerr=stds[1:])
             ax.set_xticks(xpos)
-            ax.set_xticklabels(cfgs)
+            ax.set_xticklabels(cfgs[1:])
+            ax.axhline(y=means[0], color='r')
             title = f'{index[0]} {index[1]} {metric}'
             ax.set_title(title)
             ax.yaxis.grid(True)
@@ -46,4 +47,8 @@ def main(results_file):
 
 
 if __name__ == '__main__':
-    main('results.csv')
+    if len(sys.argv) > 1:
+        main(sys.argv[-1])
+
+    else:
+        main('results.csv')

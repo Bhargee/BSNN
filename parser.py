@@ -82,6 +82,8 @@ class Parser():
         self.parser.add_argument('--metrics-dir', type=str, default='runs')
         self.parser.add_argument('--log-dir', type=str, default='log')
 
+        self.parser.add_argument('--num-bins', type=int, default=20)
+
     def parse(self):
         return self.parser.parse_args()
 

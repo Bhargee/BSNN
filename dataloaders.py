@@ -41,7 +41,7 @@ def _get_train_val_samplers(dataset, trainset, split=[.9,.1]):
     return train_sampler, val_sampler
 
 
-def mnist(resize=False, test_split=0.2, batch_size=1, num_workers=1):
+def mnist(resize=False, batch_size=1, num_workers=1):
     mnist_transforms = [
         transforms.ToTensor(),
         transforms.Normalize((0.1307,), (0.3081,))
@@ -50,15 +50,15 @@ def mnist(resize=False, test_split=0.2, batch_size=1, num_workers=1):
         mnist_transforms = [transforms.Resize(32)] + mnist_transforms
     mnist_transforms = transforms.Compose(mnist_transforms)
 
-    mnist_train = MNIST('MNIST_DATA/', train=True, transform=mnist_transforms, download=True)
-    mnist_test = MNIST('MNIST_DATA/', train = False,transform=mnist_transforms)
+    mnist_train = MNIST('/scratch/bsm92/MNIST_DATA/', train=True, transform=mnist_transforms, download=True)
+    mnist_test = MNIST('/scratch/bsm92/MNIST_DATA/', train = False,transform=mnist_transforms)
     train_sampler, val_sampler = _get_train_val_samplers('mnist', mnist_train)
 
     train_loader = DataLoader(mnist_train, batch_size=batch_size,
             sampler=train_sampler, num_workers=num_workers)
     val_loader = DataLoader(mnist_train, batch_size=batch_size,
             sampler=val_sampler, num_workers=num_workers)
-    test_loader  = DataLoader(mnist_test,  batch_size=1000, shuffle=True,
+    test_loader = DataLoader(mnist_test,  batch_size=batch_size, shuffle=True,
             num_workers=num_workers)
 
     return train_loader, val_loader, test_loader
@@ -103,8 +103,8 @@ def svhn(batch_size, num_workers=1):
     transforms.ToTensor(),
     transforms.Normalize(mean=[.4377, .4438, .4782],
                           std=[.1282, .1315, .1123])])
-    trainset = SVHN('./SVHN', transform=ts, download=True)
-    testset = SVHN('./SVHN', split='test', download=True, transform=ts)
+    trainset = SVHN('/scratch/bsm92/SVHN', transform=ts, download=True)
+    testset = SVHN('/scratch/bsm92/SVHN', split='test', download=True, transform=ts)
     train_sampler, val_sampler = _get_train_val_samplers('svhn', trainset)
     trainloader = DataLoader(trainset, batch_size=batch_size,
             sampler=train_sampler, num_workers=num_workers)

@@ -162,23 +162,23 @@ def resnet18(stochastic, device):
     if stochastic:
         return ResNet(BasicBlock, [2,2,2,2], device)
     else:
-        return deterministic_resnet.resnet18()
+        return deterministic_resnet.resnet18(num_classes=10)
 
 
 def resnet34(stochastic, device):
     if stochastic:
         return ResNet(BasicBlock, [3, 4, 6, 3], device)
     else:
-        return deterministic_resnet.resnet34()
+        return deterministic_resnet.resnet34(num_classes=10)
 
 def resnet50(stochastic, device):
     if stochastic:
         return ResNet(BottleneckBlock, [3,4,6,3], device)
     else:
-        return deterministic_resnet.resnet50()
+        return deterministic_resnet.resnet50(num_classes=10)
 
 def resnet101(stochastic, device):
     if stochastic:
         return ResNet(BottleneckBlock, [3, 4, 23, 3], device)
     else:
-        return deterministic_resnet.resnet101()
+        return deterministic_resnet.resnet101(num_classes=10)

@@ -13,7 +13,7 @@ def get_data(args):
         return mnist(resize=resize, batch_size=batch_size)
 
     elif args.dataset == 'cifar10':
-        return cifar10(args.batch_size, num_workers=0)
+        return cifar10(args.batch_size, num_workers=5)
 
     elif args.dataset == 'svhn':
         return svhn(args.batch_size, num_workers=5)
