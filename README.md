@@ -18,6 +18,6 @@ Generally, a training run will look like `python main.py --name <name> -d
 The code saves checkpoints every 50 epochs. Training can be resumed with the
 `--resume` flag. 
 
-## MNIST
-training for MNIST requires the `--resize-input` flag to be passed, and
-`--normalize` if you are training a lenet5 model
+## CIFAR10C/P
+You need to download the tar file and unzip in the root here to use
+`dataloaders.cifar10c`

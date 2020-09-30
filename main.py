@@ -1,6 +1,6 @@
 import torch
 
-from dataloaders import cifar10, mnist, svhn
+from dataloaders import cifar10, mnist, svhn, cifar10c
 from models import lenet5, simpleconv, complexconv, resnet, densenet, vgg
 from parser import Parser
 from run_model import run_model
@@ -17,6 +17,9 @@ def get_data(args):
 
     elif args.dataset == 'svhn':
         return svhn(args.batch_size, num_workers=5)
+
+    elif args.dataset == 'cifar10c':
+        return cifar10c(args.batch_size, num_workers=5)
 
 
 def main():

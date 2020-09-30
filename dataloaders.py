@@ -3,12 +3,41 @@ import json
 import os
 import random
 
+import numpy as np
+import torch
 from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
 from torchvision.datasets import CIFAR10, MNIST, SVHN, STL10
 from torchvision import transforms
 
 
 SPLIT_FILE = 'splits.json'
+
+
+class _CIFAR10C(Dataset):
+    def __init__(self, root='./CIFAR-10-C'):
+        self.root = root
+        self.cgroups = [f for f in os.listdir(self.root) if f != 'labels.npy']
+        self.samples_per_cgroup = 50000
+
+    def __len__(self):
+        return self.samples_per_cgroup*len(self.cgroups)
+
+    def __getitem__(self, i):
+        cgroup_i = i // self.samples_per_cgroup
+        if torch.is_tensor(i):
+            cgroup = torch.from_numpy(np.load([self.cgroups[ci] for ci in cgroup_i]))
+            im = cgroup[i - (self.samples_per_cgroup * cgroup_i), :, :, :]
+            im = im.permute(0,3,1,2)
+        else:
+            p = os.path.join(self.root, self.cgroups[cgroup_i])
+            cgroup = torch.from_numpy(np.load(p))
+            im = cgroup[i - (self.samples_per_cgroup * cgroup_i), :, :, :]
+            im = im.permute(2,0,1)
+
+        labels = torch.from_numpy(np.load(os.path.join(self.root, 'labels.npy')))
+        l = labels[i % self.samples_per_cgroup]
+        return im, l
+        
 
 def _get_train_val_samplers(dataset, trainset, split=[.9,.1]):
     if os.path.exists(SPLIT_FILE):
@@ -96,6 +125,20 @@ def cifar10(batch_size, num_workers=1):
                             num_workers=num_workers)
 
     return trainloader, valloader, testloader
+
+
+def cifar10c(batch_size, num_workers=1):
+    root = './CIFAR-10-C'
+    lf = 'labels.npy'
+    assert os.path.exists(root)
+    assert os.path.exists(os.path.join(root, lf))
+    assert len(os.listdir(root)) > 1
+    
+    testset = _CIFAR10C()
+    trainloader = DataLoader(testset, batch_size=batch_size, shuffle=True,
+            num_workers=num_workers)
+    return trainloader
+
 
 
 def svhn(batch_size, num_workers=1):
