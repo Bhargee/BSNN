@@ -1,7 +1,7 @@
 import torch
 
 from dataloaders import cifar10, mnist, svhn, cifar10c
-from models import lenet5, simpleconv, complexconv, resnet, densenet, vgg
+from models import lenet5, resnet, densenet, vgg
 from parser import Parser
 from run_model import run_model
 
@@ -36,9 +36,9 @@ def main():
         constructor = getattr(resnet, args.model)
         model = constructor(not args.deterministic, device).to(device)
 
-    elif args.model == 'densenet':
-        model = densenet.densenet(not args.deterministic, args.layers, device,
-                args.growth, args.reduction, args.bottleneck).to(device)
+    elif 'densenet' in args.model:
+        constructor = getattr(densenet, args.model)
+        model = constructor(not args.deterministic, device).to(device)
     elif 'vgg' in args.model:
         constructor = getattr(vgg, args.model)
         model = constructor(not args.deterministic, device, args.orthogonal).to(device)
@@ -47,8 +47,6 @@ def main():
         init_args = [args.normalize, not args.deterministic, device]
         models = {
             'lenet5': lenet5.LeNet5,
-            'simpleconv': simpleconv.SimpleConv,
-            'complexconv': complexconv.ComplexConv
         }
         model = models[args.model](*init_args).to(device)
 

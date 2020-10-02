@@ -1,145 +1,95 @@
+from collections import OrderedDict
 import math
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-#import torchvision.models.
+import torchvision.models.densenet as det_densenet
 
 import layers as L
 
-class _BasicBlock(nn.Module):
-    def __init__(self, in_planes, out_planes, device):
-        super(_BasicBlock, self).__init__()
-        self.bn = nn.BatchNorm2d(in_planes)
-        self.conv = L.Conv2d(in_planes, out_planes, 3, device, True, stride=1,
-                padding=1, bias=False)
 
+class _DenseLayer(nn.Sequential):
+    def __init__(self, num_input_features, growth_rate, bn_size, device):
+        super(_DenseLayer, self).__init__()
+        self.add_module('norm1', nn.BatchNorm2d(num_input_features))
+        self.add_module('conv1', L.Conv2d(num_input_features, bn_size * 
+                                 growth_rate, 1, device, True, stride=1,
+                                 bias=False))
+        self.add_module('norm2', nn.BatchNorm2d(bn_size * growth_rate))
+        self.add_module('conv2', L.Conv2d(bn_size*growth_rate, growth_rate, 3,
+                                device, True, stride=1, padding=1, bias=False))
     def forward(self, x):
-        out = self.conv(self.bn(x))
-        return torch.cat([x, out], 1)
+        new_features = super(_DenseLayer, self).forward(x)
+        return torch.cat([x, new_features], 1)
 
 
-
-class _BottleneckBlock(nn.Module):
-    def __init__(self, in_planes, out_planes, device):
-        super(_BottleneckBlock, self,).__init__()
-        inter_planes = out_planes * 4
-        self.bn1 = nn.BatchNorm2d(in_planes)
-        self.conv1 = L.Conv2d(in_planes, inter_planes, 1, device, True,
-                stride=1, padding=0, bias=False)
-        self.bn2 = nn.BatchNorm2d(inter_planes)
-        self.conv2 = L.Conv2d(inter_planes, out_planes, 3, device, True,
-                stride=1, padding=1, bias=False)
-
-    def forward(self, x):
-        out = self.conv1(self.bn1(x))
-        out = self.conv2(self.bn2(out))
-        return torch.cat([x, out], 1)
-
-
-
-class _TransitionBlock(nn.Module):
-    def __init__(self, in_planes, out_planes, device):
-        super(_TransitionBlock, self).__init__()
-        self.bn = nn.BatchNorm2d(in_planes)
-        self.conv = L.Conv2d(in_planes, out_planes, 1, device, True, stride=1,
-                padding=0, bias=False)
-
-
-    def forward(self, x):
-        return F.avg_pool2d(self.conv(self.bn(x)), 2)
-
-
-class _DenseBlock(nn.Module):
-    def __init__(self, nb_layers, in_planes, growth_rate, block, device):
+class _DenseBlock(nn.Sequential):
+    def __init__(self, num_layers, num_input_features, bn_size, growth_rate, device):
         super(_DenseBlock, self).__init__()
-        self.device = device
-        self.block = block
-        self.layer = self._make_layer(in_planes, growth_rate, nb_layers)
-
-    def _make_layer(self, in_planes, growth_rate, nb_layers):
-        layers = []
-        for i in range(nb_layers):
-            layers.append(self.block(in_planes+i*growth_rate, growth_rate,
-                self.device))
-        return nn.Sequential(*layers)
-
-    def forward(self, x):
-        return self.layer(x)
+        for i in range(num_layers):
+            layer = _DenseLayer(num_input_features+i*growth_rate, growth_rate,
+                    bn_size, device)
+            self.add_module(f'denselayer{i+1}', layer)
 
 
-class _DenseNet(nn.Module):
-    def __init__(self, depth, device, growth_rate=12,
-            reduction=.5,bottleneck=True):
-        super(_DenseNet, self).__init__()
-        in_planes = 2*growth_rate
-        n = (depth - 4)/3
-        if bottleneck == True:
-            n = n/2
-            block = _BottleneckBlock
-        else:
-            block = _BasicBlock
+class _Transition(nn.Sequential):
+    def __init__(self, num_input_features, num_output_features, device):
+        super(_Transition, self).__init__()
+        self.add_module('norm', nn.BatchNorm2d(num_input_features))
+        self.add_module('conv', L.Conv2d(num_input_features,
+            num_output_features, 1, device, True, stride=1, bias=False))
+        self.add_module('pool', nn.AvgPool2d(kernel_size=2, stride=2))
 
-        n = int(n)
-        self.conv1 = L.Conv2d(3, in_planes, 3, device, True, stride=1,
-                padding=1, bias=False)
 
-        self.block1 = _DenseBlock(n, in_planes, growth_rate, block, device)
-        in_planes = int(in_planes+n*growth_rate)
-        self.trans1 = _TransitionBlock(in_planes,
-                int(math.floor(in_planes*reduction)), device)
-        in_planes = int(in_planes*reduction)
+class DenseNet(nn.Module): #TODO make num_layers a param, currently=10
+    def __init__(self, device, growth_rate=32, block_config=(6,12,24,16),
+                 num_init_features=64, bn_size=4):
+        super(DenseNet, self).__init__()
+        self.features = nn.Sequential(OrderedDict([
+            ('conv0', L.Conv2d(3, num_init_features, 7, device, True, stride=2,
+                padding=3, bias=False)),
+            ('norm0', nn.BatchNorm2d(num_init_features)),
+            ('pool0', nn.MaxPool2d(kernel_size=3, stride=2, padding=1))
+        ]))
+        num_features = num_init_features
+        for i, num_layers in enumerate(block_config):
+            block = _DenseBlock(num_layers, num_features, bn_size, growth_rate,
+                                device)
+            self.features.add_module(f'denseblock{i+1}', block)
+            num_features = num_features + num_layers * growth_rate
+            if i != len(block_config) - 1:
+                trans = _Transition(num_features, num_features//2, device)
+                self.features.add_module(f'transition{i+1}', trans)
+                num_features = num_features // 2
 
-        self.block2 = _DenseBlock(n, in_planes, growth_rate, block, device)
-        in_planes = int(in_planes+n*growth_rate)
-        self.trans2 = _TransitionBlock(in_planes,
-                int(math.floor(in_planes*reduction)), device)
-        in_planes = int(in_planes * reduction)
+        self.features.add_module('norm5', nn.BatchNorm2d(num_features))
+        self.classifier = nn.Linear(num_features, 10, bias=False)
+        self.classifier.requires_grad = False
 
-        self.block3 = _DenseBlock(n, in_planes, growth_rate, block, device)
-        in_planes = int(in_planes+n*growth_rate)
-
-        self.bn1 = nn.BatchNorm2d(in_planes)
-
-        self.fc = nn.Linear(in_planes, 10)
-        torch.nn.init.orthogonal_(self.fc.weight)
-        self.fc.weight.requires_grad = False
-        self.fc.bias.requires_grad = False
-        self.in_planes = in_planes
-
-        # init weights
         for m in self.modules():
             if isinstance(m, L.Conv2d):
-                m = m.inner
-                n = m.kernel_size[0]*m.kernel_size[1]*m.out_channels
-                m.weight.data.normal_(0, math.sqrt(2. / n))
+                nn.init.kaiming_normal_(m.inner.weight)
             elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-            elif isinstance(m, nn.Linear):
-                m.bias.data.zero_()
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
-        out = self.conv1(x)
-        out = self.trans1(self.block1(out))
-        out = self.trans2(self.block2(out))
-        out = self.bn1(self.block3(out))
-        out = F.avg_pool2d(out, 8)
-        out = out.view(-1, self.in_planes)
-        return self.fc(out)
+        features = self.features(x)
+        out = F.adaptive_avg_pool2d(features, (1,1)).view(features.size(0), -1)
+        return self.classifier(out)
 
 
-    def temperatures(self):
-        temps = [self.conv1.temp]
-        for m in self.modules():
-            if isinstance(m, L.Conv2d):
-                temps.append(m.temp)
-        return temps
-
-
-def densenet(stochastic, depth, device, growth_rate, reduction, bottleneck):
-    if stochastic:
-        return _DenseNet(depth, device, growth_rate, reduction, bottleneck)
+def densenet121(stoch, device=None):
+    if stoch:
+        return DenseNet(device) # the right arguments are already defaults
     else:
-        pass # TODO
+        return det_densenet.densenet121(num_classes=10)
+
+
+def densenet161(stoch, device=None):
+    if stoch:
+        return DenseNet(device, 48, (6, 12, 36, 24), 96)
+    else:
+        return det_densenet.densenet161(num_classes=10)
 

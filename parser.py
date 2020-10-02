@@ -71,14 +71,6 @@ class Parser():
         self.parser.add_argument('--temp-const', type=float, default=1.)
         self.parser.add_argument('--temp-ada', type=float)
 
-        # densenet related arguments
-        self.parser.add_argument('--layers', type=int, default=100)
-        self.parser.add_argument('--growth', type=int, default=12)
-        self.parser.add_argument('--reduction', type=float, default=.5)
-        self.parser.add_argument('--no-bottleneck',
-                action='store_true', dest='bottleneck')
-        self.parser.set_defaults(bottleneck=True)
-        
         self.parser.add_argument('--metrics-dir', type=str, default='runs')
         self.parser.add_argument('--log-dir', type=str, default='log')
 
