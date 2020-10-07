@@ -1,9 +1,18 @@
 import torch
 
-from dataloaders import cifar10, mnist, svhn, cifar10c
+from dataloaders import *
 from models import lenet5, resnet, densenet, vgg
 from parser import Parser
 from run_model import run_model
+
+
+NUM_LABELS = {
+    'mnist': 10,
+    'cifar10': 10,
+    'svhn': 10,
+    'cifar10c': 10,
+    'tinyimagenet': 200
+}
 
 
 def get_data(args):
@@ -21,6 +30,8 @@ def get_data(args):
     elif args.dataset == 'cifar10c':
         return cifar10c(args.batch_size, num_workers=5)
 
+    elif args.dataset == 'tinyimagenet':
+        return tinyimagenet(args.batch_size, num_workers=5)
 
 def main():
     args = Parser().parse()
@@ -28,20 +39,22 @@ def main():
     use_cuda = not args.cpu and torch.cuda.is_available()
     device = torch.device(f"cuda:{args.gpu}" if use_cuda else "cpu")
 
+    num_labels = NUM_LABELS[args.dataset]
+
     torch.manual_seed(args.seed)
 
     train_loader, val_loader, test_loader = get_data(args)
 
     if 'resnet' in args.model:
         constructor = getattr(resnet, args.model)
-        model = constructor(not args.deterministic, device).to(device)
+        model = constructor(not args.deterministic, num_labels, device).to(device)
 
     elif 'densenet' in args.model:
         constructor = getattr(densenet, args.model)
-        model = constructor(not args.deterministic, device).to(device)
+        model = constructor(not args.deterministic, num_labels, device).to(device)
     elif 'vgg' in args.model:
         constructor = getattr(vgg, args.model)
-        model = constructor(not args.deterministic, device, args.orthogonal).to(device)
+        model = constructor(not args.deterministic, num_labels, device, args.orthogonal).to(device)
 
     else:
         init_args = [args.normalize, not args.deterministic, device]
@@ -65,7 +78,7 @@ def main():
         start_epoch = checkpoint['epoch']
 
     run_model(model, optimizer, start_epoch, args, device, train_loader,
-            val_loader, test_loader)
+            val_loader, test_loader, num_labels)
 
 if __name__ == '__main__':
     main()

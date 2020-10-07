@@ -8,6 +8,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
 from torchvision.datasets import CIFAR10, MNIST, SVHN, STL10
 from torchvision import transforms
+from torchvision import datasets
 
 
 SPLIT_FILE = 'splits.json'
@@ -156,4 +157,47 @@ def svhn(batch_size, num_workers=1):
     testloader = DataLoader(testset, batch_size=batch_size, shuffle=True,
         num_workers=num_workers)
 
+    return trainloader, valloader, testloader
+
+
+def tinyimagenet(batch_size, num_workers=5):
+    num_workers=0
+    transform_train = transforms.Compose([
+        transforms.RandomResizedCrop(32),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+    ])
+    transform_test = transforms.Compose([
+        transforms.Resize(32),
+        transforms.ToTensor(),
+        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+    ])
+    dataroot = '/scratch/bsm92/tiny-imagenet-200'
+    train_val_dataset_dir = os.path.join(dataroot, "train")
+    test_dataset_dir = os.path.join(dataroot, "val1")
+    trainset = datasets.ImageFolder(root=train_val_dataset_dir, transform=transform_train)
+    valset = datasets.ImageFolder(root=train_val_dataset_dir, transform=transform_test)
+    testset  = datasets.ImageFolder(root=test_dataset_dir, transform=transform_test)
+    index_path = os.path.join(dataroot, 'tinyimagenet_indices.pth')
+    if os.path.exists(index_path):
+        indices = torch.load(index_path)
+        train_indices = indices[:len(indices) - 10000]
+        valid_indices = indices[len(indices) - 10000:] 
+    else:
+        indices = list(range(200*500))
+        random.shuffle(indices)
+        train_indices = indices[:len(indices) - 10000]
+        valid_indices = indices[len(indices) - 10000:] 
+        torch.save(indices, index_path)
+
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
+                                           sampler=SubsetRandomSampler(train_indices),
+                                           num_workers=num_workers)
+    valloader = torch.utils.data.DataLoader(valset, batch_size=batch_size,
+                                           sampler=SubsetRandomSampler(valid_indices),
+                                           num_workers=num_workers)
+    testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
+                                         shuffle=False, drop_last=False,
+                                         num_workers=num_workers)
     return trainloader, valloader, testloader

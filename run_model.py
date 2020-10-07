@@ -173,7 +173,7 @@ def setup_logging(args):
 
 
 def run_model(model, optimizer, start_epoch, args, device, train_loader, 
-                 val_loader, test_loader):
+                 val_loader, test_loader, num_labels):
     criterion = nn.CrossEntropyLoss()
     setup_logging(args)
     metrics_writer = None
@@ -184,9 +184,6 @@ def run_model(model, optimizer, start_epoch, args, device, train_loader,
         metrics_writer = SummaryWriter(log_dir=metrics_path)
 
     temp_schedule = None if args.deterministic else get_temp_scheduler(model_temps(model, val_only=False), args)
-
-    # labels should be a whole number from [0, num_classes - 1]
-    num_labels = 10 #int(max(max(train_data.targets), max(test_data.targets))) + 1
 
     logging.info("Model Architecture: \n"+ model.__repr__())
     if device.type == 'cuda':

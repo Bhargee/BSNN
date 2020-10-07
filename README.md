@@ -21,3 +21,6 @@ The code saves checkpoints every 50 epochs. Training can be resumed with the
 ## CIFAR10C/P
 You need to download the tar file and unzip in the root here to use
 `dataloaders.cifar10c`
+
+## Tiny Imagenet
+Talk to Bhargava to set this up

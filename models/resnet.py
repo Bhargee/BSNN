@@ -82,7 +82,7 @@ class BottleneckBlock(nn.Module):
 
 class ResNet(nn.Module):
 
-    def __init__(self, block, layers, device, groups=1, width_per_group=64,
+    def __init__(self, block, layers, num_labels, device, groups=1, width_per_group=64,
             norm_layer=None):
         super(ResNet, self).__init__()
         self.stochastic = True
@@ -103,7 +103,7 @@ class ResNet(nn.Module):
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
         self.layer4 = self._make_layer(block, 512, layers[2], stride=2)
         self.avgpool = nn.AdaptiveAvgPool2d((1,1))
-        self.fc = nn.Linear(512*block.expansion, 10)
+        self.fc = nn.Linear(512*block.expansion, num_labels)
         torch.nn.init.orthogonal_(self.fc.weight)
         self.fc.weight.requires_grad = False
         for m in self.modules():
@@ -158,27 +158,27 @@ class ResNet(nn.Module):
         return x
 
 
-def resnet18(stochastic, device):
+def resnet18(stochastic, num_labels, device):
     if stochastic:
-        return ResNet(BasicBlock, [2,2,2,2], device)
+        return ResNet(BasicBlock, [2,2,2,2], num_labels, device)
     else:
-        return deterministic_resnet.resnet18(num_classes=10)
+        return deterministic_resnet.resnet18(num_classes=num_labels)
 
 
-def resnet34(stochastic, device):
+def resnet34(stochastic, num_labels, device):
     if stochastic:
-        return ResNet(BasicBlock, [3, 4, 6, 3], device)
+        return ResNet(BasicBlock, [3, 4, 6, 3], num_labels, device)
     else:
-        return deterministic_resnet.resnet34(num_classes=10)
+        return deterministic_resnet.resnet34(num_classes=num_labels)
 
-def resnet50(stochastic, device):
+def resnet50(stochastic, num_labels, device):
     if stochastic:
-        return ResNet(BottleneckBlock, [3,4,6,3], device)
+        return ResNet(BottleneckBlock, [3,4,6,3], num_labels, device)
     else:
-        return deterministic_resnet.resnet50(num_classes=10)
+        return deterministic_resnet.resnet50(num_classes=num_labels)
 
-def resnet101(stochastic, device):
+def resnet101(stochastic, num_labels, device):
     if stochastic:
-        return ResNet(BottleneckBlock, [3, 4, 23, 3], device)
+        return ResNet(BottleneckBlock, [3, 4, 23, 3], num_labels, device)
     else:
-        return deterministic_resnet.resnet101(num_classes=10)
+        return deterministic_resnet.resnet101(num_classes=num_labels)

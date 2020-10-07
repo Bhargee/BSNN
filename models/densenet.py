@@ -42,8 +42,8 @@ class _Transition(nn.Sequential):
         self.add_module('pool', nn.AvgPool2d(kernel_size=2, stride=2))
 
 
-class DenseNet(nn.Module): #TODO make num_layers a param, currently=10
-    def __init__(self, device, growth_rate=32, block_config=(6,12,24,16),
+class DenseNet(nn.Module):
+    def __init__(self, num_labels, device, growth_rate=32, block_config=(6,12,24,16),
                  num_init_features=64, bn_size=4):
         super(DenseNet, self).__init__()
         self.features = nn.Sequential(OrderedDict([
@@ -64,7 +64,7 @@ class DenseNet(nn.Module): #TODO make num_layers a param, currently=10
                 num_features = num_features // 2
 
         self.features.add_module('norm5', nn.BatchNorm2d(num_features))
-        self.classifier = nn.Linear(num_features, 10, bias=False)
+        self.classifier = nn.Linear(num_features, num_labels, bias=False)
         self.classifier.requires_grad = False
 
         for m in self.modules():
@@ -80,16 +80,16 @@ class DenseNet(nn.Module): #TODO make num_layers a param, currently=10
         return self.classifier(out)
 
 
-def densenet121(stoch, device=None):
+def densenet121(stoch, num_labels, device=None):
     if stoch:
-        return DenseNet(device) # the right arguments are already defaults
+        return DenseNet(num_labels, device) # the right arguments are already defaults
     else:
-        return det_densenet.densenet121(num_classes=10)
+        return det_densenet.densenet121(num_classes=num_labels)
 
 
-def densenet161(stoch, device=None):
+def densenet161(stoch, num_labels, device=None):
     if stoch:
-        return DenseNet(device, 48, (6, 12, 36, 24), 96)
+        return DenseNet(num_labels, device, 48, (6, 12, 36, 24), 96)
     else:
-        return det_densenet.densenet161(num_classes=10)
+        return det_densenet.densenet161(num_classes=num_labels)
 

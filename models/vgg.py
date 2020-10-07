@@ -6,7 +6,7 @@ import layers as L
 
 
 class VGG(nn.Module):
-    def __init__(self, features, device, orthogonal):
+    def __init__(self, features, device, orthogonal, num_labels):
         super(VGG, self).__init__()
         self.features = features
         self.device = device
@@ -14,7 +14,7 @@ class VGG(nn.Module):
         self.classifier = nn.Sequential(
             L.Linear(512*7*7, 4096, device, True, orthogonal),
             L.Linear(4096, 4096, device, True, orthogonal),
-            nn.Linear(4096, 10, bias=False)
+            nn.Linear(4096, num_labels, bias=False)
         )
         self._init_weights()
 
@@ -71,18 +71,12 @@ cfgs = {
 }
 
 
-def _vgg(cfg, device, orthogonal):
-    return VGG(_make_layers(cfgs[cfg], device), device, orthogonal)
+def _vgg(cfg, device, orthogonal, num_labels):
+    return VGG(_make_layers(cfgs[cfg], device), device, orthogonal, num_labels)
 
 
-def vgg16(stochastic, device, orthogonal):
+def vgg16(stochastic, num_labels, device, orthogonal):
     if stochastic:
-        return _vgg('D', device, orthogonal)
+        return _vgg('D', device, orthogonal, num_labels)
     else:
-        return deterministic_vgg.vgg16_bn(num_classes=10)
-
-def vgg11(stochastic, device):
-    if stochastic:
-        return _vgg('A', device)
-    else:
-        return deterministic_vgg.vgg11_bn(num_classes=10)
+        return deterministic_vgg.vgg16_bn(num_classes=num_labels)
