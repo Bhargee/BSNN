@@ -173,7 +173,7 @@ def setup_logging(args):
 
 
 def run_model(model, optimizer, start_epoch, args, device, train_loader, 
-                 val_loader, test_loader, num_labels):
+                 val_loader, test_loader, num_labels, scheduler=None):
     criterion = nn.CrossEntropyLoss()
     setup_logging(args)
     metrics_writer = None
@@ -196,8 +196,11 @@ def run_model(model, optimizer, start_epoch, args, device, train_loader,
     for epoch in range(start_epoch, start_epoch + args.epochs):
         if args.adjust_lr:
             adjust_lr(args.lr, epoch, optimizer)
-        train(args, model, device, train_loader, optimizer, epoch, criterion,
-                metrics_writer, temp_schedule)
+
+        train(args, model, device, train_loader, optimizer, epoch, criterion, metrics_writer, temp_schedule)
+        if scheduler:
+            scheduler.step()
+            
         if val_loader:
             val(args, model, device, val_loader, epoch, criterion,
                     metrics_writer, temp_schedule)

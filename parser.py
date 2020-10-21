@@ -13,17 +13,18 @@ class Parser():
         self.parser.add_argument('--model', '-m', type=str, required=True, 
                             help='which model do you want to run?')
 
-        self.parser.add_argument('--epochs', type=int, default=100,
-                            help='number of epochs to train (default: 100)')
+        self.parser.add_argument('--epochs', type=int, default=250,
+                            help='number of epochs to train (default: 301)')
 
-        self.parser.add_argument('--lr', type=float, default=0.01,
+        self.parser.add_argument('--lr', type=float, default=0.1,
                             help='learning rate (default: 0.01)')
 
-        self.parser.add_argument('--momentum', type=float, default=0.5,
+        self.parser.add_argument('--momentum', type=float, default=0.9,
                             help='SGD momentum')
 
         self.parser.add_argument('--cpu', action='store_true', default=False,
                             help='disables CUDA training')
+
         self.parser.add_argument('--gpu', type=int, default=0,
                 help='index of GPU to use')
 
@@ -41,6 +42,7 @@ class Parser():
 
         self.parser.add_argument('--resume', '-r', type=str, 
                                     help='Location to Load Model from')
+
         self.parser.add_argument('--deterministic', action='store_true', 
                 default=False, 
                 help='Run deterministic variant, if one exists')
@@ -57,8 +59,11 @@ class Parser():
 
         self.parser.add_argument('--normalize', '-n', default=False,
             action='store_true', help='batch norm, if model allows')
+
         self.parser.add_argument('--orthogonal', action='store_true', default=False)
-        self.parser.add_argument('--optimizer', '-o', type=str, default='adam')
+
+        self.parser.add_argument('--optimizer', '-o', type=str, default='sgd')
+
         self.parser.add_argument('--adjust-lr', action='store_true',
                 default=False)
 
