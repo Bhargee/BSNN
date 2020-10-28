@@ -78,9 +78,10 @@ def test(args, model, device, test_loader, criterion, num_labels):
     with torch.no_grad():
         for inputs, labels in test_loader:
             inputs, labels = inputs.float().to(device), labels.long().to(device)
-            pred = model(inputs)
-            test_loss = test_loss + criterion(pred, labels).sum().item()
-            correct = correct + pred.eq(labels.view_as(pred)).sum().item()
+            outputs = model(inputs)
+            test_loss = test_loss + criterion(outputs, labels)
+            _, pred = outputs.max(1)
+            correct = correct + pred.eq(labels).sum().item()
             conf_mat = conf_mat + confusion_matrix(labels.cpu().numpy(), pred.cpu().numpy(), labels=range(num_labels))
 
     test_loss = test_loss / len(test_loader.dataset)
