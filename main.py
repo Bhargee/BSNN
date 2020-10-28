@@ -43,19 +43,17 @@ def main():
 
     torch.manual_seed(args.seed)
 
-    train_loader, val_loader, test_loader = get_data(args)
+    train_loader, test_loader = get_data(args)
 
     if 'resnet' in args.model:
         constructor = getattr(resnet, args.model)
         model = constructor(not args.deterministic, num_labels, device).to(device)
-
     elif 'densenet' in args.model:
         constructor = getattr(densenet, args.model)
         model = constructor(not args.deterministic, num_labels, device).to(device)
     elif 'vgg' in args.model:
         constructor = getattr(vgg, args.model)
         model = constructor(not args.deterministic, num_labels, device, args.orthogonal).to(device)
-
     else:
         init_args = [args.normalize, not args.deterministic, device]
         models = {
@@ -70,7 +68,7 @@ def main():
         optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=.9,
                                 weight_decay=1e-4)
-        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[100, 150, 200], last_epoch=-1)
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[100, 150], last_epoch=-1)
 
     start_epoch = 1
 
@@ -80,8 +78,7 @@ def main():
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         start_epoch = checkpoint['epoch']
 
-    run_model(model, optimizer, start_epoch, args, device, train_loader,
-            val_loader, test_loader, num_labels,scheduler)
+    run_model(model, optimizer, start_epoch, args, device, train_loader, test_loader, num_labels, scheduler)
 
 if __name__ == '__main__':
     main()

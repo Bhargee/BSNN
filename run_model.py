@@ -172,8 +172,7 @@ def setup_logging(args):
     logging.basicConfig(handlers=handlers, format='%(message)s', level=logging.INFO)
 
 
-def run_model(model, optimizer, start_epoch, args, device, train_loader, 
-                 val_loader, test_loader, num_labels, scheduler=None):
+def run_model(model, optimizer, start_epoch, args, device, train_loader, test_loader, num_labels, scheduler=None):
     criterion = nn.CrossEntropyLoss()
     setup_logging(args)
     metrics_writer = None
@@ -201,9 +200,8 @@ def run_model(model, optimizer, start_epoch, args, device, train_loader,
         if scheduler:
             scheduler.step()
             
-        if val_loader:
-            val(args, model, device, val_loader, epoch, criterion,
-                    metrics_writer, temp_schedule)
+        #if val_loader:
+        #    val(args, model, device, val_loader, epoch, criterion, metrics_writer, temp_schedule)
         loss, acc = test(args, model, device, test_loader, criterion, num_labels)
         if args.name:
             record_metrics(metrics_writer, epoch, 'test', loss=loss, accuracy=acc)

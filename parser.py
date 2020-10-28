@@ -13,8 +13,8 @@ class Parser():
         self.parser.add_argument('--model', '-m', type=str, required=True, 
                             help='which model do you want to run?')
 
-        self.parser.add_argument('--epochs', type=int, default=250,
-                            help='number of epochs to train (default: 301)')
+        self.parser.add_argument('--epochs', type=int, default=200,
+                            help='number of epochs to train (default: 200)')
 
         self.parser.add_argument('--lr', type=float, default=0.1,
                             help='learning rate (default: 0.01)')
@@ -51,7 +51,7 @@ class Parser():
         action='store_true', default=False, 
         help='print layer gradients if model implements `print_grads` ')
 
-        self.parser.add_argument('--batch-size', type=int, default=64,
+        self.parser.add_argument('--batch-size', type=int, default=128,
             help='input batch size for training')
 
         self.parser.add_argument('--inference-passes', '-i', type=int, default=10,
