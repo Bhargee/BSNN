@@ -54,7 +54,7 @@ def train(args, model, device, train_loader, optimizer, epoch, criterion,
     temps = []
     grads = []
     for batch_idx, (inputs, labels) in enumerate(train_loader):
-        inputs, labels = inputs.float().to(device), labels.long().to(device)
+        inputs, labels = inputs.to(device), labels.to(device)
         optimizer.zero_grad()
         loss = criterion(model(inputs), labels)
         loss.backward()
@@ -77,7 +77,7 @@ def test(args, model, device, test_loader, criterion, num_labels):
     correct = 0
     with torch.no_grad():
         for inputs, labels in test_loader:
-            inputs, labels = inputs.float().to(device), labels.long().to(device)
+            inputs, labels = inputs.to(device), labels.to(device)
             outputs = model(inputs)
             test_loss = test_loss + criterion(outputs, labels)
             _, pred = outputs.max(1)
