@@ -6,6 +6,8 @@ import torch.nn.functional as F
 import torchvision.models.resnet as deterministic_resnet
 import sys
 
+import torch.nn.init as init
+
 
 def _weights_init(m):
     classname = m.__class__.__name__
@@ -27,7 +29,7 @@ class BasicBlock(nn.Module):
 
     def __init__(self, in_planes, planes, device, stochastic, stride=1):
         super(BasicBlock, self).__init__()
-
+        self.stochastic = stochastic
         self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(planes)
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
@@ -40,12 +42,12 @@ class BasicBlock(nn.Module):
     def forward(self, x):
         out = self.conv1(x)
         out = self.bn1(out)
-        if not stochastic:
+        if not self.stochastic:
             out = F.relu(out)
         out = self.conv2(out)
         out = self.bn2(out)
         out += self.shortcut(x)
-        if not stochastic:
+        if not self.stochastic:
             out = F.relu(out)
         return out
 
