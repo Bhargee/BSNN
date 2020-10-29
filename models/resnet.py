@@ -76,7 +76,7 @@ class ResNet(nn.Module):
         strides = [stride] + [1]*(num_blocks-1)
         layers = []
         for stride in strides:
-            layers.append(block(self.in_planes, planes, stochastic=self.stochastic, stride=stride))
+            layers.append(block(self.in_planes, planes, device=self.device, stochastic=self.stochastic, stride=stride))
             self.in_planes = planes * block.expansion
 
         return nn.Sequential(*layers)
