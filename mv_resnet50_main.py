@@ -1,7 +1,7 @@
 import torch
 
 from dataloaders import *
-from models import resnet
+from mv_models import *
 from parser import Parser
 from mv_run_model import run_model
 
@@ -14,7 +14,7 @@ def main():
     train_loader, test_loader = cifar10(args.batch_size, num_workers=5)
 
     constructor = getattr(resnet, args.model)
-    model = constructor(not args.deterministic, num_labels, device).to(device)
+    model = ResNet50().to(device)
 
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=.9,
