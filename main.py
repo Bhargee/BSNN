@@ -48,7 +48,6 @@ def main():
     if 'resnet' in args.model:
         constructor = getattr(resnet, args.model)
         model = constructor(not args.deterministic, num_labels, device).to(device)
-
     elif 'densenet' in args.model:
         constructor = getattr(densenet, args.model)
         model = constructor(not args.deterministic, num_labels, device).to(device)
@@ -72,9 +71,12 @@ def main():
     start_epoch = 1
 
     if args.resume: # load checkpoint
-        checkpoint = torch.load(args.resume)
+        checkpoint = torch.load(args.resume, map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        if args.optimizer == 'sgd': # if you restart with different lr
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = args.lr
         start_epoch = checkpoint['epoch']
 
     run_model(model, optimizer, start_epoch, args, device, train_loader,

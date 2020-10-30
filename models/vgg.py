@@ -45,7 +45,6 @@ class VGG(nn.Module):
                 nn.init.constant_(m.norm.bias, 0)
             elif isinstance(m, nn.Linear):
                 nn.init.orthogonal_(m.weight)
-                m.requires_grad = False
 
 
 def _make_layers(cfg, device):
@@ -75,7 +74,7 @@ def _vgg(cfg, device, orthogonal, num_labels):
     return VGG(_make_layers(cfgs[cfg], device), device, orthogonal, num_labels)
 
 
-def vgg16(stochastic, num_labels, device, orthogonal):
+def vgg16(stochastic, num_labels, device, orthogonal=False):
     if stochastic:
         return _vgg('D', device, orthogonal, num_labels)
     else:

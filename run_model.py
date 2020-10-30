@@ -1,6 +1,7 @@
 import logging
 import math
-from os import path, mkdir
+from os import path, mkdir, getpid
+from psutil import Process
 
 import numpy as np
 from sklearn.metrics import confusion_matrix
@@ -9,14 +10,14 @@ import torch
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 
-from optim import JangScheduler, ConstScheduler, AdaScheduler
+from optim import ExponentialScheduler, ConstScheduler, LinearScheduler
 import layers as L
 
-def adjust_lr(base_lr, epoch, optimizer):
-    lr = base_lr * (0.1 ** (epoch // 150)) * (.1 ** (epoch // 225))
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
-
+def cpu_stats():
+    pid = getpid()
+    py = Process(pid)
+    memoryUse = py.memory_info()[0] / 2. ** 30  # memory use in GB...I think
+    return memoryUse
 
 def model_grads(model):
     grads = []
@@ -75,7 +76,7 @@ def log_test(avg_loss, correct, num_test_samples, conf_mat):
 
 
 def train(args, model, device, train_loader, optimizer, epoch, criterion,
-        metrics_writer=None, temp_schedule=None):
+        metrics_writer=None):
     model.train()
     losses = []
     temps = []
@@ -89,8 +90,6 @@ def train(args, model, device, train_loader, optimizer, epoch, criterion,
         temps.append(avg(model_temps(model)))
         grads.append(avg(model_grads(model)))
         optimizer.step() 
-        if temp_schedule:
-            temp_schedule.step()
         if batch_idx % args.log_interval == 0:
             t = avg(model_temps(model))
             inputs_seen = batch_idx * len(inputs)
@@ -105,10 +104,10 @@ def train(args, model, device, train_loader, optimizer, epoch, criterion,
 
     if metrics_writer:
         record_metrics(metrics_writer, epoch, 'train', loss=avg(losses),
-            temp=avg(temps), grads=avg(grads))
+            temp=avg(temps), grads=avg(grads), memory_usage=cpu_stats())
 
 def val(args, model, device, val_loader, epoch, criterion,
-        metrics_writer=None, temp_schedule=None):
+        metrics_writer=None):
     model.eval()
     val_loss = 0
     with torch.no_grad():
@@ -126,8 +125,7 @@ def val(args, model, device, val_loader, epoch, criterion,
         record_metrics(metrics_writer, epoch, 'val', loss=val_loss)
         logging.info(f'Val Epoch {epoch}, Loss={val_loss}')
 
-    if temp_schedule and isinstance(temp_schedule, AdaScheduler):
-        temp_schedule.adjust(val_loss)
+    return val_loss
 
 
 def test(args, model, device, test_loader, criterion, num_labels):
@@ -153,11 +151,12 @@ def test(args, model, device, test_loader, criterion, num_labels):
 
 
 def get_temp_scheduler(temps, args):
-    if args.temp_jang:
-        N, r, limit = args.temp_step, args.temp_exp, args.temp_limit
-        return JangScheduler(temps, N, r, limit)
-    elif args.temp_ada:
-        return AdaScheduler(temps, args.temp_ada)
+    if args.temp_exp:
+        start, minn, epochs = args.temp_const, args.temp_limit, args.epochs
+        return ExponentialScheduler(temps, start, minn, epochs)
+    elif args.temp_lin:
+        start, minn, epochs = args.temp_const, args.temp_limit, args.epochs
+        return LinearScheduler(temps, start, minn, epochs)
     else:
         return ConstScheduler(temps, args.temp_const)
 
@@ -183,6 +182,12 @@ def run_model(model, optimizer, start_epoch, args, device, train_loader,
         metrics_path = path.join(args.metrics_dir, args.name)
         metrics_writer = SummaryWriter(log_dir=metrics_path)
 
+    if args.adjust_lr:
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
+                    milestones=[35], gamma=0.1)
+        #scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer,
+        #        verbose=True)
+
     temp_schedule = None if args.deterministic else get_temp_scheduler(model_temps(model, val_only=False), args)
 
     logging.info("Model Architecture: \n"+ model.__repr__())
@@ -194,13 +199,15 @@ def run_model(model, optimizer, start_epoch, args, device, train_loader,
     logging.info("Normalize layer outputs?: "+ str(args.normalize))
 
     for epoch in range(start_epoch, start_epoch + args.epochs):
-        if args.adjust_lr:
-            adjust_lr(args.lr, epoch, optimizer)
         train(args, model, device, train_loader, optimizer, epoch, criterion,
-                metrics_writer, temp_schedule)
-        if val_loader:
-            val(args, model, device, val_loader, epoch, criterion,
-                    metrics_writer, temp_schedule)
+                metrics_writer)
+        val_loss = val(args, model, device, val_loader, epoch, criterion,
+                    metrics_writer)
+        if temp_schedule:
+            temp_schedule.step()
+        if args.adjust_lr:
+            scheduler.step()
+
         loss, acc = test(args, model, device, test_loader, criterion, num_labels)
         if args.name:
             record_metrics(metrics_writer, epoch, 'test', loss=loss, accuracy=acc)

@@ -105,7 +105,6 @@ class ResNet(nn.Module):
         self.avgpool = nn.AdaptiveAvgPool2d((1,1))
         self.fc = nn.Linear(512*block.expansion, num_labels)
         torch.nn.init.orthogonal_(self.fc.weight)
-        self.fc.weight.requires_grad = False
         for m in self.modules():
             if isinstance(m, L.Conv2d):
                 nn.init.kaiming_normal_(m.inner.weight, mode='fan_out', nonlinearity='relu')

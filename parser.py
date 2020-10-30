@@ -63,13 +63,10 @@ class Parser():
                 default=False)
 
         # temperature schedule arguments
-        self.parser.add_argument('--temp-jang', '-tj',
-                action='store_true')
-        self.parser.add_argument('--temp-step', type=int, default=1000)
-        self.parser.add_argument('--temp-exp', type=float, default=1e-2)
-        self.parser.add_argument('--temp-limit', type=float, default=.5)
-        self.parser.add_argument('--temp-const', type=float, default=1.)
-        self.parser.add_argument('--temp-ada', type=float)
+        self.parser.add_argument('--temp-exp', '-te', action='store_true')
+        self.parser.add_argument('--temp-lin', '-tl', action='store_true')
+        self.parser.add_argument('--temp-limit', type=float, default=.1)
+        self.parser.add_argument('--temp-const', '-t', type=float, default=1.)
 
         self.parser.add_argument('--metrics-dir', type=str, default='runs')
         self.parser.add_argument('--log-dir', type=str, default='log')
