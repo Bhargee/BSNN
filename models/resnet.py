@@ -13,10 +13,6 @@ def conv3x3(in_planes, out_planes,device, stride=1, groups=1, dilation=1):
     return L.Conv2d(in_planes, out_planes, 3, device, True, stride=stride,
             padding=dilation, groups=groups, bias=False)
 
-
-def conv1x1(in_planes, out_planes, device, stride=1):
-    return L.Conv2d(in_planes, out_planes, 1, device, True, stride=stride)
-
 def _weights_init(m):
     classname = m.__class__.__name__
     if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
@@ -46,8 +42,6 @@ class BasicBlock(nn.Module):
             self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(planes)
         self.bn2 = nn.BatchNorm2d(planes)
-
-        raise ValueError("Boom")
 
         self.shortcut = nn.Sequential()
         if stride != 1 or in_planes != self.expansion*planes:
