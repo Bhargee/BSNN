@@ -13,6 +13,26 @@ from torch.utils.tensorboard import SummaryWriter
 from optim import ExponentialScheduler, ConstScheduler, LinearScheduler
 import layers as L
 
+def exp_name(args): # TODO take `--resume` into account
+    m,d,lr,e,o  = args.model,args.dataset,args.lr,args.epochs,args.optimizer
+
+    t = args.temp_const if not args.deterministic else '0'
+    temp_sched = 'const'
+    if args.temp_exp:
+        temp_sched = 'exp'
+    elif args.temp_lin:
+        temp_sched = 'lin'
+
+    lr_sched = 'multistep' if args.adjust_lr else 'unsched'
+
+    stoch = 'det' if args.deterministic else 'stoch'
+
+    if args.name:
+        n = args.name
+        return f'{m}_{d}_{stoch}_{o}_{lr},{lr_sched}_{t},{temp_sched}_{e}_{n}'
+    else:
+        return f'{m}_{d}_{stoch}_{o}_{lr},{lr_sched}_{t},{temp_sched}_{e}'
+
 def cpu_stats():
     pid = getpid()
     py = Process(pid)
@@ -62,8 +82,12 @@ def record_metrics(writer, epoch, phase, **metrics):
 def log_train_step(model, epoch, inputs_seen, inputs_tot, pct, loss, temp):
     fmt = 'Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}\tTemp: {:.6f}'
     grads = model_grads(model)
+    print(grads)
     mean_grad = avg(grads) 
     grads = '\tGrads: {:.6f}'.format(mean_grad)
+    if math.isnan(mean_grad):
+        import sys
+        sys.exit(0)
     log_str = fmt.format(epoch, inputs_seen, inputs_tot, pct, loss, temp)
     logging.info(log_str + grads)
 
@@ -90,7 +114,7 @@ def train(args, model, device, train_loader, optimizer, epoch, criterion,
         temps.append(avg(model_temps(model)))
         grads.append(avg(model_grads(model)))
         optimizer.step() 
-        if batch_idx % args.log_interval == 0:
+        if batch_idx % 10 == 0:
             t = avg(model_temps(model))
             inputs_seen = batch_idx * len(inputs)
             inputs_tot = len(train_loader.dataset)
@@ -162,10 +186,10 @@ def get_temp_scheduler(temps, args):
 
 def setup_logging(args):
     handlers = [logging.StreamHandler()]
-    if args.name:
+    if not args.no_log:
         if not path.exists(args.log_dir):
             mkdir(args.log_dir)
-        log_file = path.join(args.log_dir, f'{args.name}.log')
+        log_file = path.join(args.log_dir, f'{exp_name(args)}.log')
         handlers.append(logging.FileHandler(log_file))
 
     logging.basicConfig(handlers=handlers, format='%(message)s', level=logging.INFO)
@@ -176,17 +200,15 @@ def run_model(model, optimizer, start_epoch, args, device, train_loader,
     criterion = nn.CrossEntropyLoss()
     setup_logging(args)
     metrics_writer = None
-    if args.name:
+    if not args.no_log:
         if not path.exists(args.metrics_dir):
             mkdir(args.metrics_dir)
-        metrics_path = path.join(args.metrics_dir, args.name)
+        metrics_path = path.join(args.metrics_dir, exp_name(args))
         metrics_writer = SummaryWriter(log_dir=metrics_path)
 
     if args.adjust_lr:
         scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
-                    milestones=[35], gamma=0.1)
-        #scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer,
-        #        verbose=True)
+                    milestones=[.5*args.epochs, .75*args.epochs], gamma=0.1)
 
     temp_schedule = None if args.deterministic else get_temp_scheduler(model_temps(model, val_only=False), args)
 
@@ -195,8 +217,6 @@ def run_model(model, optimizer, start_epoch, args, device, train_loader,
         logging.info("Using device: "+device.type + str(device.index))
     else:
         logging.info("Using device: "+device.type)
-
-    logging.info("Normalize layer outputs?: "+ str(args.normalize))
 
     for epoch in range(start_epoch, start_epoch + args.epochs):
         train(args, model, device, train_loader, optimizer, epoch, criterion,
@@ -209,15 +229,15 @@ def run_model(model, optimizer, start_epoch, args, device, train_loader,
             scheduler.step()
 
         loss, acc = test(args, model, device, test_loader, criterion, num_labels)
-        if args.name:
+        if not args.no_log:
             record_metrics(metrics_writer, epoch, 'test', loss=loss, accuracy=acc)
-        if (epoch % 50) == 0 and args.name:
-            checkpoint(model, optimizer, epoch+1, args.name)
+        if (epoch % 50) == 0 and not args.no_save:
+            checkpoint(model, optimizer, epoch+1, exp_name(args))
 
-    if args.name:
+    if not args.no_save:
         torch.save(model.state_dict(),
-                f'checkpoints/{args.name}_{args.epochs}.pt')
+                f'checkpoints/{exp_name(args)}.pt')
 
-    if args.name:
+    if not args.no_log:
         metrics_writer.flush()
         metrics_writer.close()

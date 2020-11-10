@@ -24,3 +24,7 @@ You need to download the tar file and unzip in the root here to use
 
 ## Tiny Imagenet
 Talk to Bhargava to set this up
+
+# TODO
+* Amend autonaming code to take `--resume` into account
+* move code common to the experiments into a util or common module

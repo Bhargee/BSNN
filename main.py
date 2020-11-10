@@ -55,13 +55,6 @@ def main():
         constructor = getattr(vgg, args.model)
         model = constructor(not args.deterministic, num_labels, device, args.orthogonal).to(device)
 
-    else:
-        init_args = [args.normalize, not args.deterministic, device]
-        models = {
-            'lenet5': lenet5.LeNet5,
-        }
-        model = models[args.model](*init_args).to(device)
-
     if args.optimizer == 'adam':
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)  
     elif args.optimizer == 'sgd':
