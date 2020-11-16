@@ -13,6 +13,8 @@ from torch.utils.tensorboard import SummaryWriter
 from optim import ExponentialScheduler, ConstScheduler, LinearScheduler
 import layers as L
 
+GLOBAL_STEP=0
+
 def exp_name(args): # TODO take `--resume` into account
     m,d,lr,e,o  = args.model,args.dataset,args.lr,args.epochs,args.optimizer
 
@@ -33,11 +35,43 @@ def exp_name(args): # TODO take `--resume` into account
     else:
         return f'{m}_{d}_{stoch}_{o}_{lr},{lr_sched}_{t},{temp_sched}_{e}'
 
+
+def hparams_dict(args):
+    m,d,lr,e,o  = args.model,args.dataset,args.lr,args.epochs,args.optimizer
+
+    t = args.temp_const if not args.deterministic else '0'
+    temp_sched = 'const'
+    if args.temp_exp:
+        temp_sched = 'exp'
+    elif args.temp_lin:
+        temp_sched = 'lin'
+
+    lr_sched = 'multistep' if args.adjust_lr else 'unsched'
+
+    stoch = 'det' if args.deterministic else 'stoch'
+
+    retd = {
+        'type': stoch,
+        'lr': lr,
+        'lr schedule': lr_sched,
+        'epochs': e,
+        'optimizer': o,
+        'temp': t,
+        'temp schedule': temp_sched,
+        'batch size': args.batch_size
+    }
+
+    if args.name:
+        retd['name'] = args.name
+    return retd
+
+
 def cpu_stats():
     pid = getpid()
     py = Process(pid)
     memoryUse = py.memory_info()[0] / 2. ** 30  # memory use in GB...I think
     return memoryUse
+
 
 def model_grads(model):
     grads = []
@@ -75,21 +109,40 @@ def avg(l):
         return 0
     return sum(l)/len(l)
 
+
 def record_metrics(writer, epoch, phase, **metrics):
     for metric_name, metric_val in metrics.items():
         writer.add_scalar(f'{phase}/{metric_name}', metric_val, epoch)
+
+
+def record_fp_bp_means(writer, model, deterministic):
+    global GLOBAL_STEP
+    i = 1
+    GLOBAL_STEP += 1
+    for m in model.modules():
+        if not deterministic and isinstance(m, L.Conv2d):
+            tag = f'train/Layer{i}/mean_grad'
+            writer.add_scalar(tag,
+                    torch.mean(m.inner.weight.grad).detach().item(),
+                    GLOBAL_STEP)
+            i += 1
+        if deterministic and isinstance(m, nn.Conv2d):
+            tag = f'train/Layer{i}/mean_grad'
+            writer.add_scalar(tag,
+                    torch.mean(m.weight.grad).detach().item(),
+                    GLOBAL_STEP)
+            i += 1
+
+
     
 def log_train_step(model, epoch, inputs_seen, inputs_tot, pct, loss, temp):
     fmt = 'Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}\tTemp: {:.6f}'
     grads = model_grads(model)
-    print(grads)
     mean_grad = avg(grads) 
     grads = '\tGrads: {:.6f}'.format(mean_grad)
-    if math.isnan(mean_grad):
-        import sys
-        sys.exit(0)
     log_str = fmt.format(epoch, inputs_seen, inputs_tot, pct, loss, temp)
     logging.info(log_str + grads)
+
 
 def log_test(avg_loss, correct, num_test_samples, conf_mat):
     fmt = '\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.2f}%)\n'
@@ -110,6 +163,8 @@ def train(args, model, device, train_loader, optimizer, epoch, criterion,
         optimizer.zero_grad()
         loss = criterion(model(inputs), labels)
         loss.backward()
+        if metrics_writer:
+            record_fp_bp_means(metrics_writer, model, args.deterministic)
         losses.append(loss.item())
         temps.append(avg(model_temps(model)))
         grads.append(avg(model_grads(model)))
@@ -129,6 +184,7 @@ def train(args, model, device, train_loader, optimizer, epoch, criterion,
     if metrics_writer:
         record_metrics(metrics_writer, epoch, 'train', loss=avg(losses),
             temp=avg(temps), grads=avg(grads), memory_usage=cpu_stats())
+
 
 def val(args, model, device, val_loader, epoch, criterion,
         metrics_writer=None):
@@ -184,6 +240,7 @@ def get_temp_scheduler(temps, args):
     else:
         return ConstScheduler(temps, args.temp_const)
 
+
 def setup_logging(args):
     handlers = [logging.StreamHandler()]
     if not args.no_log:
@@ -205,6 +262,7 @@ def run_model(model, optimizer, start_epoch, args, device, train_loader,
             mkdir(args.metrics_dir)
         metrics_path = path.join(args.metrics_dir, exp_name(args))
         metrics_writer = SummaryWriter(log_dir=metrics_path)
+#        metrics_writer.add_hparams(hparams_dict(args), {})
 
     if args.adjust_lr:
         scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,

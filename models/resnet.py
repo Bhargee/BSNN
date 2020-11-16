@@ -7,6 +7,8 @@ import torchvision.models.resnet as deterministic_resnet
 import layers as L
 import sys
 
+from torch.utils.tensorboard import SummaryWriter
+
 def conv3x3(in_planes, out_planes,device, stride=1, groups=1, dilation=1):
     return L.Conv2d(in_planes, out_planes, 3, device, True, stride=stride,
             padding=dilation, groups=groups, bias=False)
@@ -82,8 +84,7 @@ class BottleneckBlock(nn.Module):
 
 class ResNet(nn.Module):
 
-    def __init__(self, block, layers, num_labels, device, groups=1, width_per_group=64,
-            norm_layer=None):
+    def __init__(self, block, layers, num_labels, device, groups=1, width_per_group=64, norm_layer=None):
         super(ResNet, self).__init__()
         self.stochastic = True
         if norm_layer == None:
@@ -101,7 +102,7 @@ class ResNet(nn.Module):
         self.layer1 = self._make_layer(block, 64, layers[0])
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
-        self.layer4 = self._make_layer(block, 512, layers[2], stride=2)
+        self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
         self.avgpool = nn.AdaptiveAvgPool2d((1,1))
         self.fc = nn.Linear(512*block.expansion, num_labels)
         torch.nn.init.orthogonal_(self.fc.weight)
@@ -149,7 +150,6 @@ class ResNet(nn.Module):
         x = self.layer3(x)
         x = self.layer4(x)
 
-
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
         x = self.fc(x)
@@ -170,11 +170,13 @@ def resnet34(stochastic, num_labels, device):
     else:
         return deterministic_resnet.resnet34(num_classes=num_labels)
 
+
 def resnet50(stochastic, num_labels, device):
     if stochastic:
         return ResNet(BottleneckBlock, [3,4,6,3], num_labels, device)
     else:
         return deterministic_resnet.resnet50(num_classes=num_labels)
+
 
 def resnet101(stochastic, num_labels, device):
     if stochastic:
