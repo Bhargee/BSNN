@@ -128,6 +128,7 @@ def val(args, model, device, val_loader, epoch, criterion,
 
     if temp_schedule and isinstance(temp_schedule, AdaScheduler):
         temp_schedule.adjust(val_loss)
+    return val_loss
 
 
 def test(args, model, device, test_loader, criterion, num_labels):
@@ -172,7 +173,7 @@ def setup_logging(args):
     logging.basicConfig(handlers=handlers, format='%(message)s', level=logging.INFO)
 
 
-def run_model(model, optimizer, start_epoch, args, device, train_loader, test_loader, num_labels, scheduler=None):
+def run_model(model, optimizer, start_epoch, args, device, train_loader, val_loader, test_loader, num_labels, scheduler=None):
     criterion = nn.CrossEntropyLoss()
     setup_logging(args)
     metrics_writer = None
@@ -197,11 +198,10 @@ def run_model(model, optimizer, start_epoch, args, device, train_loader, test_lo
             adjust_lr(args.lr, epoch, optimizer)
 
         train(args, model, device, train_loader, optimizer, epoch, criterion, metrics_writer, temp_schedule)
+        if val_loader:
+            val_loss = val(args, model, device, val_loader, epoch, criterion, metrics_writer, temp_schedule)
         if scheduler:
-            scheduler.step()
-            
-        #if val_loader:
-        #    val(args, model, device, val_loader, epoch, criterion, metrics_writer, temp_schedule)
+            scheduler.step(val_loss)
         loss, acc = test(args, model, device, test_loader, criterion, num_labels)
         if args.name:
             record_metrics(metrics_writer, epoch, 'test', loss=loss, accuracy=acc)

@@ -117,13 +117,13 @@ def cifar10(batch_size, num_workers=1):
     testset = CIFAR10(root='./CIFAR10_DATA', train=False, download=True,
                         transform=test_transform)
 
-    #train_sampler, val_sampler = _get_train_val_samplers('cifar10', trainset)
+    train_sampler, val_sampler = _get_train_val_samplers('cifar10', trainset)
     
-    trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    #valloader = DataLoader(trainset, batch_size=batch_size, shuffle=False, num_workers=num_workers, sampler=val_sampler)
+    trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=False, num_workers=num_workers, sampler=val_sampler)
+    valloader = DataLoader(trainset, batch_size=batch_size, shuffle=False, num_workers=num_workers, sampler=val_sampler)
     testloader = DataLoader(testset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
-    return trainloader, testloader
+    return trainloader, valloader, testloader
 
 
 def cifar10c(batch_size, num_workers=1):
