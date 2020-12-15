@@ -33,20 +33,20 @@ class _GumbelLayer(nn.Module):
         self.last_mean_output = None
 
 
-    def forward(self, x):
+    def forward(self, x, switch_on_gumbel=False):
         l = self.inner(x)
         l = self.norm(l)
         # Change p to double so that gumbel_softmax func works
         delta = 1e-5
         p = torch.clamp(torch.sigmoid(l).double(), min=delta, max=1-delta)
-        o = self.sample(p)
+        o = self.sample(p, switch_on_gumbel)
         self.last_mean_output = torch.mean(o).detach().item()
         # Change output back to float for the next layer's input
         return o.float()
 
 
-    def sample(self, p):
-        if self.training or self.need_grads:
+    def sample(self, p, switch_on_gumbel):
+        if self.training or self.need_grads or switch_on_gumbel:
             # sample relaxed bernoulli dist
             return self._gumbel_softmax(p) 
         else:

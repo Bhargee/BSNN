@@ -50,7 +50,7 @@ class Parser():
                 help='number of forward passes during test')
 
         self.p.add_argument('--orthogonal', action='store_true', default=False)
-        self.p.add_argument('--optimizer', '-o', type=str, default='adam')
+        self.p.add_argument('--optimizer', '-o', type=str, default='sgd')
         self.p.add_argument('--adjust-lr', action='store_true')
 
         # temperature schedule arguments

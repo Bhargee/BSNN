@@ -58,8 +58,11 @@ def main():
     if args.optimizer == 'adam':
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)  
     elif args.optimizer == 'sgd':
-        optimizer = torch.optim.SGD(model.parameters(), lr=args.lr,
-                momentum=.9, nesterov=True, weight_decay=10e-4)
+        optimizer = torch.optim.SGD(model.parameters(), args.lr,
+                                momentum=.9,
+                                weight_decay=1e-4)
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[100, 150], last_epoch=-1)
+        
 
     start_epoch = 1
 
@@ -73,7 +76,7 @@ def main():
         start_epoch = checkpoint['epoch']
 
     run_model(model, optimizer, start_epoch, args, device, train_loader,
-            val_loader, test_loader, num_labels)
+            val_loader, test_loader, num_labels, scheduler)
 
 if __name__ == '__main__':
     main()

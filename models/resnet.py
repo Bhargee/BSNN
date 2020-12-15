@@ -17,7 +17,38 @@ def conv3x3(in_planes, out_planes,device, stride=1, groups=1, dilation=1):
 def conv1x1(in_planes, out_planes, device, stride=1):
     return L.Conv2d(in_planes, out_planes, 1, device, True, stride=stride)
 
+class LayerBlock(nn.Module):
 
+    def __init__(self, block, blocks, dilate, _norm_layer, in_planes, planes, device, stride,
+            groups, base_width, dilation):
+        super(LayerBlock, self).__init__()
+        norm_layer = _norm_layer
+        downsample = None
+        previous_dilation = dilation
+        if dilate:
+            dilation *= stride
+            stride = 1
+        if stride != 1 or in_planes != planes * block.expansion:
+            downsample = nn.Sequential(
+                conv1x1(in_planes, planes*block.expansion, device, stride=stride),
+                norm_layer(planes * block.expansion)
+            )
+        self.layers = nn.ModuleList()
+        self.layers.append(block(in_planes, planes, device, stride,
+            downsample, groups, base_width, previous_dilation,
+            norm_layer=norm_layer))
+        in_planes = planes * block.expansion
+        for _ in range(1, blocks):
+            self.layers.append(block(in_planes, planes, device,
+                groups=groups, base_width=base_width,
+                dilation=dilation))
+
+    def forward(self, x, switch_on_gumbel=False):
+        out = x
+        for l in self.layers:
+            out = l(out, switch_on_gumbel)
+        return out
+        
 class BasicBlock(nn.Module):
     expansion = 1
 
@@ -34,11 +65,11 @@ class BasicBlock(nn.Module):
         self.downsample = downsample
 
 
-    def forward(self, x):
+    def forward(self, x, switch_on_gumbel=False):
         identity = x
-        out = self.conv1(x)
+        out = self.conv1(x, switch_on_gumbel)
         out = self.bn1(out)
-        out = self.conv2(out)
+        out = self.conv2(out, switch_on_gumbel)
         out = self.bn2(out)
         if self.downsample is not None:
             identity = self.downsample(x)
@@ -66,13 +97,13 @@ class BottleneckBlock(nn.Module):
         self.stride = stride
 
 
-    def forward(self, x):
+    def forward(self, x, switch_on_gumbel=False):
         identity = x
-        out = self.conv1(x)
+        out = self.conv1(x, switch_on_gumbel)
         out = self.bn1(out)
-        out = self.conv2(out)
+        out = self.conv2(out, switch_on_gumbel)
         out = self.bn2(out)
-        out = self.conv3(out)
+        out = self.conv3(out, switch_on_gumbel)
         out = self.bn3(out)
 
         if self.downsample is not None:
@@ -115,40 +146,31 @@ class ResNet(nn.Module):
 
 
     def _make_layer(self, block, planes, blocks, stride=1, dilate=False):
-        norm_layer = self._norm_layer
-        downsample = None
-        previous_dilation = self.dilation
+        """
+        if dilate:
+            self.dilation *= stride
+
+        self.in_planes = planes * block.expansion
+        """
+        mod = LayerBlock(block, blocks, dilate, self._norm_layer, self.in_planes, planes, self.device, stride,
+            groups=self.groups, base_width=self.base_width, dilation=self.dilation)
+    
         if dilate:
             self.dilation *= stride
             stride = 1
-        if stride != 1 or self.in_planes != planes * block.expansion:
-            downsample = nn.Sequential(
-                conv1x1(self.in_planes, planes*block.expansion, self.device, 
-                    stride=stride),
-                norm_layer(planes * block.expansion)
-            )
         
-        layers = []
-        layers.append(block(self.in_planes, planes, self.device, stride,
-            downsample, self.groups, self.base_width, previous_dilation,
-            norm_layer=norm_layer))
         self.in_planes = planes * block.expansion
-        for _ in range(1, blocks):
-            layers.append(block(self.in_planes, planes, self.device,
-                groups=self.groups, base_width=self.base_width,
-                dilation=self.dilation))
-
-        return nn.Sequential(*layers)
+        return mod
 
 
-    def forward(self, x):
-        x = self.conv1(x)
+    def forward(self, x, switch_on_gumbel=False):
+        x = self.conv1(x, switch_on_gumbel)
         x = self.bn1(x)
         x = self.maxpool(x)
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
+        x = self.layer1(x, switch_on_gumbel)
+        x = self.layer2(x, switch_on_gumbel)
+        x = self.layer3(x, switch_on_gumbel)
+        x = self.layer4(x, switch_on_gumbel)
 
         x = self.avgpool(x)
         x = torch.flatten(x, 1)

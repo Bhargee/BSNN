@@ -212,22 +212,38 @@ def test(args, model, device, test_loader, criterion, num_labels):
     conf_mat = np.zeros((num_labels, num_labels))
     model.eval()
     test_loss = 0
+    gumbel_test_loss = 0
     correct = 0
+    gumbel_correct = 0
     with torch.no_grad():
         for inputs, labels in test_loader:
-            inputs, labels = inputs.float().to(device), labels.long().to(device)
+            ##Without gumbel softmax
+            inputs1, labels1 = inputs.float().to(device), labels.long().to(device)
             outputs = []
             for _ in range(args.inference_passes):
-                outputs.append(model(inputs))
+                outputs.append(model(inputs1))
             mean_output = torch.mean(torch.stack(outputs), dim=0)
             pred = mean_output.argmax(dim=1)
-            test_loss += criterion(mean_output, labels).sum().item()
-            correct += pred.eq(labels.view_as(pred)).sum().item()
-            conf_mat += confusion_matrix(labels.cpu().numpy(), pred.cpu().numpy(), labels=range(num_labels))
+            test_loss += criterion(mean_output, labels1).sum().item()
+            correct += pred.eq(labels1.view_as(pred)).sum().item()
+            conf_mat += confusion_matrix(labels1.cpu().numpy(), pred.cpu().numpy(), labels=range(num_labels))
+            ##With gumbel softmax
+            inputs2, labels2 = inputs.float().to(device), labels.long().to(device)
+            gumbel_outputs = []
+            for _ in range(args.inference_passes):
+                gumbel_outputs.append(model(inputs2, switch_on_gumbel=True))
+            gumbel_mean_output = torch.mean(torch.stack(gumbel_outputs), dim=0)
+            gumbel_pred = gumbel_mean_output.argmax(dim=1)
+            gumbel_test_loss += criterion(gumbel_mean_output, labels2).sum().item()
+            gumbel_correct += gumbel_pred.eq(labels2.view_as(gumbel_pred)).sum().item()
 
     test_loss /= len(test_loader.dataset)
+    gumbel_test_loss /= len(test_loader.dataset)
     log_test(test_loss, correct, len(test_loader.dataset), conf_mat)
-    return test_loss, correct/len(test_loader.dataset)
+
+    loss_diff = test_loss - gumbel_test_loss
+    accuracy_diff = correct/len(test_loader.dataset) - gumbel_correct/len(test_loader.dataset)
+    return test_loss, correct/len(test_loader.dataset), loss_diff, accuracy_diff
 
 
 def get_temp_scheduler(temps, args):
@@ -253,7 +269,7 @@ def setup_logging(args):
 
 
 def run_model(model, optimizer, start_epoch, args, device, train_loader, 
-                 val_loader, test_loader, num_labels):
+                 val_loader, test_loader, num_labels, scheduler):
     criterion = nn.CrossEntropyLoss()
     setup_logging(args)
     metrics_writer = None
@@ -263,10 +279,6 @@ def run_model(model, optimizer, start_epoch, args, device, train_loader,
         metrics_path = path.join(args.metrics_dir, exp_name(args))
         metrics_writer = SummaryWriter(log_dir=metrics_path)
 #        metrics_writer.add_hparams(hparams_dict(args), {})
-
-    if args.adjust_lr:
-        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
-                    milestones=[.5*args.epochs, .75*args.epochs], gamma=0.1)
 
     temp_schedule = None if args.deterministic else get_temp_scheduler(model_temps(model, val_only=False), args)
 
@@ -283,12 +295,13 @@ def run_model(model, optimizer, start_epoch, args, device, train_loader,
                     metrics_writer)
         if temp_schedule:
             temp_schedule.step()
-        if args.adjust_lr:
+        if scheduler:
             scheduler.step()
 
-        loss, acc = test(args, model, device, test_loader, criterion, num_labels)
+        loss, acc, loss_diff, accuracy_diff = test(args, model, device, test_loader, criterion, num_labels)
         if not args.no_log:
             record_metrics(metrics_writer, epoch, 'test', loss=loss, accuracy=acc)
+            record_metrics(metrics_writer, epoch, 'test', loss_diff=loss_diff, accuracy_diff=accuracy_diff)
         if (epoch % 50) == 0 and not args.no_save:
             checkpoint(model, optimizer, epoch+1, exp_name(args))
 
