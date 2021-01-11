@@ -10,19 +10,15 @@ class _GumbelLayer(nn.Module):
     ''' 
     Base class for all gumbel-stochastic layers
     '''
-    def __init__(self, inner, device, norm):
+    def __init__(self, inner, norm):
         '''
         inner:
             pytorch module subclass instance used as deterministic inner class
-        device: 
-            cpu or gpu. Needed for gumbel sample, would be nice to make
-            obselete
         norm:
            batch norm object
         '''
         super(_GumbelLayer, self).__init__()
         self.inner = inner
-        self.device = device
         self.need_grads = False
         if norm:
             self.norm = norm
@@ -50,37 +46,37 @@ class _GumbelLayer(nn.Module):
             # sample relaxed bernoulli dist
             return self._gumbel_softmax(p) 
         else:
-            return torch.bernoulli(p).to(self.device)
+            return torch.bernoulli(p).to(self.inner.weight.device)
 
 
     def _gumbel_softmax(self, p):
-        y1 = exp(( log(p) + self._sample_gumbel_dist(p.shape) ) / self.temp.val)
+        y1 = exp(( log(p) + self._sample_gumbel_dist(p.shape)) / self.temp.val)
         sum_all = y1 + exp(( log(1-p) + self._sample_gumbel_dist(p.shape))
                 / self.temp.val)
         return y1 / sum_all
         
         
     def _sample_gumbel_dist(self, input_size):
-        if self.device == torch.device('cpu'):
+        if self.inner.weight.device == torch.device('cpu'):
             u = torch.FloatTensor(input_size).uniform_()
         else:
-            u = torch.cuda.FloatTensor(input_size, device=self.device).uniform_()
+            u = torch.cuda.FloatTensor(input_size,
+                    device=self.inner.weight.device).uniform_()
         return -log(-log(u))
 
 
 class Linear(_GumbelLayer):
-    def __init__(self, input_dim, output_dim, device, norm, orthogonal=False):
+    def __init__(self, input_dim, output_dim, norm=False):
         inner = nn.Linear(input_dim, output_dim, bias=False)
-        if orthogonal:
-            nn.init.orthogonal_(inner.weight)
+        nn.init.orthogonal_(inner.weight)
         norm_obj = nn.BatchNorm1d(output_dim) if norm else None
-        super(Linear, self).__init__(inner, device, norm_obj)
+        super(Linear, self).__init__(inner, norm_obj)
 
 
 class Conv2d(_GumbelLayer):
-    def __init__(self, inc, outc, kernel, device, norm, **kwargs):
-        inner = nn.Conv2d(inc, outc, kernel, **kwargs)
+    def __init__(self, inc, outc, norm=False, **kwargs):
+        inner = nn.Conv2d(inc, outc, **kwargs)
         norm_obj = nn.BatchNorm2d(outc) if norm else None
-        super(Conv2d, self).__init__(inner, device, norm_obj)
+        super(Conv2d, self).__init__(inner, norm_obj)
 
 
