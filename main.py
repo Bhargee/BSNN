@@ -1,7 +1,7 @@
 import torch
 
 from dataloaders import *
-from models import lenet5, resnet, densenet, vgg
+from models import resnet, vgg, sresnet
 from parser import Parser
 from run_model import run_model
 
@@ -46,20 +46,20 @@ def main():
     train_loader, val_loader, test_loader = get_data(args)
 
     if 'resnet' in args.model:
-        constructor = getattr(resnet, args.model)
-        model = constructor(not args.deterministic, num_labels, device).to(device)
-    elif 'densenet' in args.model:
-        constructor = getattr(densenet, args.model)
-        model = constructor(not args.deterministic, num_labels, device).to(device)
+        if args.deterministic:
+            constructor = getattr(resnet, args.model)
+        else:
+            constructor = getattr(sresnet, args.model)
+        model = constructor().to(device)
     elif 'vgg' in args.model:
         constructor = getattr(vgg, args.model)
-        model = constructor(not args.deterministic, num_labels, device, args.orthogonal).to(device)
+        model = constructor(not args.deterministic, num_labels, args.orthogonal).to(device)
 
     if args.optimizer == 'adam':
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)  
     elif args.optimizer == 'sgd':
         optimizer = torch.optim.SGD(model.parameters(), lr=args.lr,
-                momentum=.9, nesterov=True, weight_decay=10e-4)
+                momentum=.9, weight_decay=5e-4)
 
     start_epoch = 1
 
