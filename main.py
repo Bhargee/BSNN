@@ -57,6 +57,7 @@ def main():
 
     if args.optimizer == 'adam':
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)  
+        scheduler = None
     elif args.optimizer == 'sgd':
         optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=.9,

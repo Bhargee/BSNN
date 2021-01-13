@@ -2,206 +2,152 @@ from math import inf
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torchvision.models.resnet as deterministic_resnet
-
-import layers as L
 import sys
 
-from torch.utils.tensorboard import SummaryWriter
+import layers as L
+import torch.nn.init as init
 
 def conv3x3(in_planes, out_planes,device, stride=1, groups=1, dilation=1):
     return L.Conv2d(in_planes, out_planes, 3, device, True, stride=stride,
             padding=dilation, groups=groups, bias=False)
 
+def _weights_init(m):
+    classname = m.__class__.__name__
+    if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
+        init.kaiming_normal_(m.weight)
 
-def conv1x1(in_planes, out_planes, device, stride=1):
-    return L.Conv2d(in_planes, out_planes, 1, device, True, stride=stride)
+
+class LambdaLayer(nn.Module):
+    def __init__(self, lambd):
+        super(LambdaLayer, self).__init__()
+        self.lambd = lambd
+
+    def forward(self, x):
+        return self.lambd(x)
+
+
+class BasicBlock(nn.Module):
+    expansion = 1
+
+    def __init__(self, in_planes, planes, device, stochastic, stride=1):
+        super(BasicBlock, self).__init__()
+        self.stochastic = stochastic
+        if stochastic:
+            self.conv1 = conv3x3(in_planes, planes, device, stride)
+            self.conv2 = conv3x3(planes, planes, device)
+        else:
+            self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+            self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.bn2 = nn.BatchNorm2d(planes)
+
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_planes != self.expansion*planes:
+            self.shortcut = LambdaLayer(lambda x: F.pad(x[:, :, ::2, ::2], (0, 0, 0, 0, planes//4, planes//4), "constant", 0))
+
+    def forward(self, x, switch_on_gumbel=False):
+        if not self.stochastic:
+            out = self.conv1(x)
+            out = self.bn1(out)
+            out = F.relu(out)
+            out = self.conv2(out)
+            out = self.bn2(out)
+            out += self.shortcut(x)
+            out = F.relu(out)
+        else:
+            out = self.conv1(x, switch_on_gumbel)
+            out = self.bn1(out)
+            out = self.conv2(out, switch_on_gumbel)
+            out = self.bn2(out)
+            out += self.shortcut(x)
+        return out
 
 class LayerBlock(nn.Module):
 
-    def __init__(self, block, blocks, dilate, _norm_layer, in_planes, planes, device, stride,
-            groups, base_width, dilation):
+    def __init__(self, layers, stochastic):
         super(LayerBlock, self).__init__()
-        norm_layer = _norm_layer
-        downsample = None
-        previous_dilation = dilation
-        if dilate:
-            dilation *= stride
-            stride = 1
-        if stride != 1 or in_planes != planes * block.expansion:
-            downsample = nn.Sequential(
-                conv1x1(in_planes, planes*block.expansion, device, stride=stride),
-                norm_layer(planes * block.expansion)
-            )
-        self.layers = nn.ModuleList()
-        self.layers.append(block(in_planes, planes, device, stride,
-            downsample, groups, base_width, previous_dilation,
-            norm_layer=norm_layer))
-        in_planes = planes * block.expansion
-        for _ in range(1, blocks):
-            self.layers.append(block(in_planes, planes, device,
-                groups=groups, base_width=base_width,
-                dilation=dilation))
+        self.layers = layers
+        self.stochastic = stochastic
 
     def forward(self, x, switch_on_gumbel=False):
         out = x
         for l in self.layers:
-            out = l(out, switch_on_gumbel)
+            if self.stochastic:
+                out = l(out, switch_on_gumbel)
+            else:
+                out = l(out)
         return out
-        
-class BasicBlock(nn.Module):
-    expansion = 1
-
-    def __init__(self, in_planes, planes,device, stride=1, downsample=None,
-            groups=1, base_width=64, dilation=1, norm_layer=None):
-        super(BasicBlock, self).__init__()
-        if norm_layer is None:
-            norm_layer = nn.BatchNorm2d
-
-        self.conv1 = conv3x3(in_planes, planes, device, stride)
-        self.bn1 = norm_layer(planes)
-        self.conv2 = conv3x3(planes, planes, device)
-        self.bn2 = norm_layer(planes)
-        self.downsample = downsample
-
-
-    def forward(self, x, switch_on_gumbel=False):
-        identity = x
-        out = self.conv1(x, switch_on_gumbel)
-        out = self.bn1(out)
-        out = self.conv2(out, switch_on_gumbel)
-        out = self.bn2(out)
-        if self.downsample is not None:
-            identity = self.downsample(x)
-        out += identity
-
-        return out
-
-
-class BottleneckBlock(nn.Module):
-    expansion = 4
-
-    def __init__(self, in_planes, planes, device, stride=1, downsample=None,
-            groups=1, base_width=64, dilation=1, norm_layer=None):
-        super(BottleneckBlock, self).__init__()
-        if norm_layer is None:
-            norm_layer = nn.BatchNorm2d
-        width = int(planes * (base_width/64)) * groups
-        self.conv1 = conv1x1(in_planes, planes, device)
-        self.bn1 = norm_layer(width)
-        self.conv2 = conv3x3(width, width, device, stride, groups, dilation)
-        self.bn2 = norm_layer(width)
-        self.conv3 = conv1x1(width, planes * self.expansion, device)
-        self.bn3 = norm_layer(planes * self.expansion)
-        self.downsample = downsample
-        self.stride = stride
-
-
-    def forward(self, x, switch_on_gumbel=False):
-        identity = x
-        out = self.conv1(x, switch_on_gumbel)
-        out = self.bn1(out)
-        out = self.conv2(out, switch_on_gumbel)
-        out = self.bn2(out)
-        out = self.conv3(out, switch_on_gumbel)
-        out = self.bn3(out)
-
-        if self.downsample is not None:
-            identity = self.downsample(x)
-
-        out += identity
-        return out
-
 
 class ResNet(nn.Module):
 
-    def __init__(self, block, layers, num_labels, device, groups=1, width_per_group=64, norm_layer=None):
+    def __init__(self, block, layers, num_labels, device, stochastic):
         super(ResNet, self).__init__()
-        self.stochastic = True
-        if norm_layer == None:
-            norm_layer = nn.BatchNorm2d
-        self._norm_layer = norm_layer
+        self.stochastic = stochastic
         self.device = device
-        self.in_planes = 64
-        self.dilation = 1
-        self.base_width = 64
-        self.groups = groups
-        self.conv1 = L.Conv2d(3, self.in_planes, 7, device, True, stride=2,
+        self.in_planes = 16
+
+        if stochastic:
+            self.conv1 = L.Conv2d(3, self.in_planes, 7, device, True, stride=2,
                 padding=3, bias=False)
-        self.bn1 = norm_layer(self.in_planes)
-        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.layer1 = self._make_layer(block, 64, layers[0])
-        self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
-        self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
-        self.avgpool = nn.AdaptiveAvgPool2d((1,1))
-        self.fc = nn.Linear(512*block.expansion, num_labels)
-        torch.nn.init.orthogonal_(self.fc.weight)
-        for m in self.modules():
-            if isinstance(m, L.Conv2d):
-                nn.init.kaiming_normal_(m.inner.weight, mode='fan_out', nonlinearity='relu')
-            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
+        else:
+            self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(16)
+        self.layer1 = self._make_layer(block, 16, layers[0], stride=1)
+        self.layer2 = self._make_layer(block, 32, layers[1], stride=2)
+        self.layer3 = self._make_layer(block, 64, layers[2], stride=2)
+        self.fc = nn.Linear(64, num_labels)
+
+        self.apply(_weights_init)
+
+        if stochastic:
+            torch.nn.init.orthogonal_(self.fc.weight)
+            self.fc.weight.requires_grad = False
 
 
-    def _make_layer(self, block, planes, blocks, stride=1, dilate=False):
-        """
-        if dilate:
-            self.dilation *= stride
-
-        self.in_planes = planes * block.expansion
-        """
-        mod = LayerBlock(block, blocks, dilate, self._norm_layer, self.in_planes, planes, self.device, stride,
-            groups=self.groups, base_width=self.base_width, dilation=self.dilation)
-    
-        if dilate:
-            self.dilation *= stride
-            stride = 1
+    def _make_layer(self, block, planes, num_blocks, stride):
+        strides = [stride] + [1]*(num_blocks-1)
+        layers = nn.ModuleList()
+        for stride in strides:
+            layers.append(block(self.in_planes, planes, device=self.device, stochastic=self.stochastic, stride=stride))
+            self.in_planes = planes * block.expansion
         
-        self.in_planes = planes * block.expansion
-        return mod
+        layer_block = LayerBlock(layers, self.stochastic)
 
+        return layer_block
 
     def forward(self, x, switch_on_gumbel=False):
-        x = self.conv1(x, switch_on_gumbel)
-        x = self.bn1(x)
-        x = self.maxpool(x)
-        x = self.layer1(x, switch_on_gumbel)
-        x = self.layer2(x, switch_on_gumbel)
-        x = self.layer3(x, switch_on_gumbel)
-        x = self.layer4(x, switch_on_gumbel)
-
-        x = self.avgpool(x)
-        x = torch.flatten(x, 1)
+        if not self.stochastic:
+            x = self.conv1(x)
+            x = self.bn1(x)
+            x = F.relu(x)
+            x = self.layer1(x)
+            x = self.layer2(x)
+            x = self.layer3(x)
+        else:
+            x = self.conv1(x, switch_on_gumbel)
+            x = self.bn1(x)
+            x = self.layer1(x, switch_on_gumbel)
+            x = self.layer2(x, switch_on_gumbel)
+            x = self.layer3(x, switch_on_gumbel)
+        x = F.avg_pool2d(x, x.size()[3])
+        x = x.view(x.size(0), -1)
         x = self.fc(x)
-
         return x
 
 
 def resnet18(stochastic, num_labels, device):
-    if stochastic:
-        return ResNet(BasicBlock, [2,2,2,2], num_labels, device)
-    else:
-        return deterministic_resnet.resnet18(num_classes=num_labels)
+    return ResNet(BasicBlock, [3, 3, 3], num_labels, device, stochastic)
 
 
 def resnet34(stochastic, num_labels, device):
-    if stochastic:
-        return ResNet(BasicBlock, [3, 4, 6, 3], num_labels, device)
-    else:
-        return deterministic_resnet.resnet34(num_classes=num_labels)
+    return ResNet(BasicBlock, [5, 5, 5], num_labels, device, stochastic)
 
 
 def resnet50(stochastic, num_labels, device):
-    if stochastic:
-        return ResNet(BottleneckBlock, [3,4,6,3], num_labels, device)
-    else:
-        return deterministic_resnet.resnet50(num_classes=num_labels)
+    return ResNet(BasicBlock, [9, 9, 9], num_labels, device, stochastic)
 
 
 def resnet101(stochastic, num_labels, device):
-    if stochastic:
-        return ResNet(BottleneckBlock, [3, 4, 23, 3], num_labels, device)
-    else:
-        return deterministic_resnet.resnet101(num_classes=num_labels)
+    return ResNet(BasicBlock, [18, 18, 18], num_labels, device, stochastic)

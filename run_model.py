@@ -29,6 +29,9 @@ def exp_name(args): # TODO take `--resume` into account
 
     stoch = 'det' if args.deterministic else 'stoch'
 
+    if stoch == 'stoch':
+        stoch += '_' + str(args.train_passes) + '_'
+
     if args.name:
         n = args.name
         return f'{m}_{d}_{stoch}_{o}_{lr},{lr_sched}_{t},{temp_sched}_{e}_{n}'
@@ -134,7 +137,6 @@ def record_fp_bp_means(writer, model, deterministic):
             i += 1
 
 
-    
 def log_train_step(model, epoch, inputs_seen, inputs_tot, pct, loss, temp):
     fmt = 'Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}\tTemp: {:.6f}'
     grads = model_grads(model)
@@ -161,10 +163,16 @@ def train(args, model, device, train_loader, optimizer, epoch, criterion,
     for batch_idx, (inputs, labels) in enumerate(train_loader):
         inputs, labels = inputs.float().to(device), labels.long().to(device)
         optimizer.zero_grad()
-        loss = criterion(model(inputs), labels)
+
+        outputs = []
+        iters = 1 if args.deterministic else args.train_passes
+        for _ in range(iters):
+            outputs.append(model(inputs))
+        mean_output = torch.mean(torch.stack(outputs), dim=0)
+        loss = criterion(mean_output, labels).sum()
+
         loss.backward()
-        if metrics_writer:
-            record_fp_bp_means(metrics_writer, model, args.deterministic)
+
         losses.append(loss.item())
         temps.append(avg(model_temps(model)))
         grads.append(avg(model_grads(model)))
@@ -208,7 +216,7 @@ def val(args, model, device, val_loader, epoch, criterion,
     return val_loss
 
 
-def test(args, model, device, test_loader, criterion, num_labels):
+def test(args, model, device, test_loader, criterion, num_labels, toggle_softmax):
     conf_mat = np.zeros((num_labels, num_labels))
     model.eval()
     test_loss = 0
@@ -228,14 +236,16 @@ def test(args, model, device, test_loader, criterion, num_labels):
             correct += pred.eq(labels1.view_as(pred)).sum().item()
             conf_mat += confusion_matrix(labels1.cpu().numpy(), pred.cpu().numpy(), labels=range(num_labels))
             ##With gumbel softmax
-            inputs2, labels2 = inputs.float().to(device), labels.long().to(device)
-            gumbel_outputs = []
-            for _ in range(args.inference_passes):
-                gumbel_outputs.append(model(inputs2, switch_on_gumbel=True))
-            gumbel_mean_output = torch.mean(torch.stack(gumbel_outputs), dim=0)
-            gumbel_pred = gumbel_mean_output.argmax(dim=1)
-            gumbel_test_loss += criterion(gumbel_mean_output, labels2).sum().item()
-            gumbel_correct += gumbel_pred.eq(labels2.view_as(gumbel_pred)).sum().item()
+
+            if toggle_softmax:
+                inputs2, labels2 = inputs.float().to(device), labels.long().to(device)
+                gumbel_outputs = []
+                for _ in range(args.inference_passes):
+                    gumbel_outputs.append(model(inputs2, switch_on_gumbel=True))
+                gumbel_mean_output = torch.mean(torch.stack(gumbel_outputs), dim=0)
+                gumbel_pred = gumbel_mean_output.argmax(dim=1)
+                gumbel_test_loss += criterion(gumbel_mean_output, labels2).sum().item()
+                gumbel_correct += gumbel_pred.eq(labels2.view_as(gumbel_pred)).sum().item()
 
     test_loss /= len(test_loader.dataset)
     gumbel_test_loss /= len(test_loader.dataset)
@@ -249,7 +259,7 @@ def test(args, model, device, test_loader, criterion, num_labels):
 def get_temp_scheduler(temps, args):
     if args.temp_exp:
         start, minn, epochs = args.temp_const, args.temp_limit, args.epochs
-        return ExponentialScheduler(temps, start, minn, epochs)
+        return ExponentialScheduler(temps, start, minn, epochs - args.temp_plateau_epochs)
     elif args.temp_lin:
         start, minn, epochs = args.temp_const, args.temp_limit, args.epochs
         return LinearScheduler(temps, start, minn, epochs)
@@ -278,7 +288,6 @@ def run_model(model, optimizer, start_epoch, args, device, train_loader,
             mkdir(args.metrics_dir)
         metrics_path = path.join(args.metrics_dir, exp_name(args))
         metrics_writer = SummaryWriter(log_dir=metrics_path)
-#        metrics_writer.add_hparams(hparams_dict(args), {})
 
     temp_schedule = None if args.deterministic else get_temp_scheduler(model_temps(model, val_only=False), args)
 
@@ -293,15 +302,16 @@ def run_model(model, optimizer, start_epoch, args, device, train_loader,
                 metrics_writer)
         val_loss = val(args, model, device, val_loader, epoch, criterion,
                     metrics_writer)
-        if temp_schedule:
+        if temp_schedule and epoch < args.epochs - args.temp_plateau_epochs:
             temp_schedule.step()
         if scheduler:
             scheduler.step()
 
-        loss, acc, loss_diff, accuracy_diff = test(args, model, device, test_loader, criterion, num_labels)
+        loss, acc, loss_diff, accuracy_diff = test(args, model, device, test_loader, criterion, num_labels, args.toggle_softmax)
         if not args.no_log:
             record_metrics(metrics_writer, epoch, 'test', loss=loss, accuracy=acc)
-            record_metrics(metrics_writer, epoch, 'test', loss_diff=loss_diff, accuracy_diff=accuracy_diff)
+            if args.toggle_softmax:
+                record_metrics(metrics_writer, epoch, 'test', loss_diff=loss_diff, accuracy_diff=accuracy_diff)
         if (epoch % 50) == 0 and not args.no_save:
             checkpoint(model, optimizer, epoch+1, exp_name(args))
 
