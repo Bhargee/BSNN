@@ -7,7 +7,8 @@ import seaborn as sns # TODO delete?
 from tensorflow.core.util import event_pb2
 from tensorflow.data import TFRecordDataset
 
-TF_TAGS = ['train/loss', 'test/accuracy', 'val/loss', 'test/loss']
+TF_TAGS = ['train/loss', 'test/accuracy', 'val/loss', 'test/loss',
+        'train/accuracy', 'val/accuracy']
 
 
 def _parse(f):
@@ -32,14 +33,21 @@ def _parse(f):
 
 
 def _graph(events):
-    logfiles = events.keys()
-    for tag in TF_TAGS:
-        for lf in logfiles:
-            if tag in events[lf] and len(events[lf][tag]) > 0:
-                plt.plot(events[lf][tag], label=f'{lf}-{tag}')
+    def plot_matching(tag_suffix):
+        logfiles = events.keys()
+        for tag in TF_TAGS:
+            for lf in logfiles:
+                if tag_suffix in tag and tag in events[lf] and len(events[lf][tag]) > 0:
+                    if len(events[lf][tag]) == 1:
+                        plt.plot(events[lf][tag], 'ro', label=f'{lf}-{tag}')
+                    else:
+                        plt.plot(events[lf][tag], label=f'{lf}-{tag}')
 
-    plt.legend()
-    plt.show()
+        plt.legend()
+        plt.show()
+
+    plot_matching('loss')
+    plot_matching('accuracy')
 
 
 def main(logdirs):

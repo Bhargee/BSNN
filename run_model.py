@@ -13,8 +13,6 @@ from torch.utils.tensorboard import SummaryWriter
 from optim import ExponentialScheduler, ConstScheduler, LinearScheduler
 import layers as L
 
-GLOBAL_STEP=0
-
 def exp_name(args): # TODO take `--resume` into account
     m,d,lr,e,o  = args.model,args.dataset,args.lr,args.epochs,args.optimizer
 
@@ -34,43 +32,6 @@ def exp_name(args): # TODO take `--resume` into account
         return f'{m}_{d}_{stoch}_{o}_{lr},{lr_sched}_{t},{temp_sched}_{e}_{n}'
     else:
         return f'{m}_{d}_{stoch}_{o}_{lr},{lr_sched}_{t},{temp_sched}_{e}'
-
-
-def hparams_dict(args):
-    m,d,lr,e,o  = args.model,args.dataset,args.lr,args.epochs,args.optimizer
-
-    t = args.temp_const if not args.deterministic else '0'
-    temp_sched = 'const'
-    if args.temp_exp:
-        temp_sched = 'exp'
-    elif args.temp_lin:
-        temp_sched = 'lin'
-
-    lr_sched = 'multistep' if args.adjust_lr else 'unsched'
-
-    stoch = 'det' if args.deterministic else 'stoch'
-
-    retd = {
-        'type': stoch,
-        'lr': lr,
-        'lr schedule': lr_sched,
-        'epochs': e,
-        'optimizer': o,
-        'temp': t,
-        'temp schedule': temp_sched,
-        'batch size': args.batch_size
-    }
-
-    if args.name:
-        retd['name'] = args.name
-    return retd
-
-
-def cpu_stats():
-    pid = getpid()
-    py = Process(pid)
-    memoryUse = py.memory_info()[0] / 2. ** 30  # memory use in GB...I think
-    return memoryUse
 
 
 def model_grads(model):
@@ -115,26 +76,6 @@ def record_metrics(writer, epoch, phase, **metrics):
         writer.add_scalar(f'{phase}/{metric_name}', metric_val, epoch)
 
 
-def record_fp_bp_means(writer, model, deterministic):
-    global GLOBAL_STEP
-    i = 1
-    GLOBAL_STEP += 1
-    for m in model.modules():
-        if not deterministic and isinstance(m, L.Conv2d):
-            tag = f'train/Layer{i}/mean_grad'
-            writer.add_scalar(tag,
-                    torch.mean(m.inner.weight.grad).detach().item(),
-                    GLOBAL_STEP)
-            i += 1
-        if deterministic and isinstance(m, nn.Conv2d):
-            tag = f'train/Layer{i}/mean_grad'
-            writer.add_scalar(tag,
-                    torch.mean(m.weight.grad).detach().item(),
-                    GLOBAL_STEP)
-            i += 1
-
-
-    
 def log_train_step(model, epoch, inputs_seen, inputs_tot, pct, loss, temp):
     fmt = 'Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}\tTemp: {:.6f}'
     grads = model_grads(model)
@@ -155,20 +96,26 @@ def log_test(avg_loss, correct, num_test_samples, conf_mat):
 def train(args, model, device, train_loader, optimizer, epoch, criterion,
         metrics_writer=None):
     model.train()
+    correct = 0
     losses = []
     temps = []
     grads = []
     for batch_idx, (inputs, labels) in enumerate(train_loader):
         inputs, labels = inputs.float().to(device), labels.long().to(device)
         optimizer.zero_grad()
-        loss = criterion(model(inputs), labels)
+        out = model(inputs)
+        pred = out.argmax(dim=1)
+        loss = criterion(out, labels)
+
         loss.backward()
-        if metrics_writer:
-            record_fp_bp_means(metrics_writer, model, args.deterministic)
+
         losses.append(loss.item())
         temps.append(avg(model_temps(model)))
         grads.append(avg(model_grads(model)))
+        correct += pred.eq(labels.view_as(pred)).sum().item()
+
         optimizer.step() 
+
         if batch_idx % 10 == 0:
             t = avg(model_temps(model))
             inputs_seen = batch_idx * len(inputs)
@@ -182,36 +129,35 @@ def train(args, model, device, train_loader, optimizer, epoch, criterion,
             log_train_step(model, epoch, inputs_seen, inputs_tot, pct, loss.item(), t)
 
     if metrics_writer:
+        acc = correct/len(train_loader.dataset)
         record_metrics(metrics_writer, epoch, 'train', loss=avg(losses),
-            temp=avg(temps), grads=avg(grads), memory_usage=cpu_stats())
+            temp=avg(temps), grads=avg(grads), accuracy=acc)
 
 
 def val(args, model, device, val_loader, epoch, criterion,
         metrics_writer=None):
     model.eval()
-    val_loss = 0
+    losses = []
+    correct = 0
     with torch.no_grad():
         for inputs, labels in val_loader:
             inputs, labels = inputs.float().to(device), labels.long().to(device)
-            outputs = []
-            outputs.append(model(inputs))
-            mean_output = torch.mean(torch.stack(outputs), dim=0)
-            pred = mean_output.argmax(dim=1)
-            val_loss += criterion(mean_output, labels).sum().item()
-
-    val_loss /= len(val_loader.dataset)
+            out = model(inputs)
+            pred = out.argmax(dim=1)
+            losses.append(criterion(out, labels).sum().item())
+            correct += pred.eq(labels.view_as(pred)).sum().item()
 
     if metrics_writer:
-        record_metrics(metrics_writer, epoch, 'val', loss=val_loss)
-        logging.info(f'Val Epoch {epoch}, Loss={val_loss}')
+        acc = correct / len(val_loader.dataset)
+        record_metrics(metrics_writer, epoch, 'val', loss=avg(losses),
+                accuracy=acc)
 
-    return val_loss
 
-
-def test(args, model, device, test_loader, criterion, num_labels):
+def test(args, model, device, test_loader, epoch, criterion, num_labels,
+        metrics_writer=None):
     conf_mat = np.zeros((num_labels, num_labels))
     model.eval()
-    test_loss = 0
+    losses = []
     correct = 0
     with torch.no_grad():
         for inputs, labels in test_loader:
@@ -221,13 +167,15 @@ def test(args, model, device, test_loader, criterion, num_labels):
                 outputs.append(model(inputs))
             mean_output = torch.mean(torch.stack(outputs), dim=0)
             pred = mean_output.argmax(dim=1)
-            test_loss += criterion(mean_output, labels).sum().item()
+            losses.append(criterion(mean_output, labels).sum().item())
             correct += pred.eq(labels.view_as(pred)).sum().item()
             conf_mat += confusion_matrix(labels.cpu().numpy(), pred.cpu().numpy(), labels=range(num_labels))
 
-    test_loss /= len(test_loader.dataset)
+    test_loss = avg(losses)
     log_test(test_loss, correct, len(test_loader.dataset), conf_mat)
-    return test_loss, correct/len(test_loader.dataset)
+    acc = correct/len(test_loader.dataset)
+    record_metrics(metrics_writer, epoch, 'test', loss=test_loss,
+            accuracy=acc)
 
 
 def get_temp_scheduler(temps, args):
@@ -262,7 +210,6 @@ def run_model(model, optimizer, start_epoch, args, device, train_loader,
             mkdir(args.metrics_dir)
         metrics_path = path.join(args.metrics_dir, exp_name(args))
         metrics_writer = SummaryWriter(log_dir=metrics_path)
-#        metrics_writer.add_hparams(hparams_dict(args), {})
 
     if args.adjust_lr:
         scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
@@ -279,16 +226,14 @@ def run_model(model, optimizer, start_epoch, args, device, train_loader,
     for epoch in range(start_epoch, start_epoch + args.epochs):
         train(args, model, device, train_loader, optimizer, epoch, criterion,
                 metrics_writer)
-        val_loss = val(args, model, device, val_loader, epoch, criterion,
-                    metrics_writer)
+        val(args, model, device, val_loader, epoch, criterion, metrics_writer)
         if temp_schedule:
             temp_schedule.step()
         if args.adjust_lr:
             scheduler.step()
 
-        loss, acc = test(args, model, device, test_loader, criterion, num_labels)
-        if not args.no_log:
-            record_metrics(metrics_writer, epoch, 'test', loss=loss, accuracy=acc)
+        test(args, model, device, test_loader, epoch, criterion, num_labels,
+                metrics_writer)
         if (epoch % 50) == 0 and not args.no_save:
             checkpoint(model, optimizer, epoch+1, exp_name(args))
 
