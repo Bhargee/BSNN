@@ -26,7 +26,6 @@ class _GumbelLayer(nn.Module):
             self.norm = nn.Identity()
 
         self.temp = TempVar()
-        self.last_mean_output = None
 
 
     def forward(self, x):
@@ -36,7 +35,6 @@ class _GumbelLayer(nn.Module):
         delta = 1e-5
         p = torch.clamp(torch.sigmoid(l).double(), min=delta, max=1-delta)
         o = self.sample(p)
-        self.last_mean_output = torch.mean(o).detach().item()
         # Change output back to float for the next layer's input
         return o.float()
 
