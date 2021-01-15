@@ -129,7 +129,7 @@ def train(args, model, device, train_loader, optimizer, epoch, criterion,
             log_train_step(model, epoch, inputs_seen, inputs_tot, pct, loss.item(), t)
 
     if metrics_writer:
-        acc = correct/len(train_loader.dataset)
+        acc = correct/len(train_loader.sampler)
         record_metrics(metrics_writer, epoch, 'train', loss=avg(losses),
             temp=avg(temps), grads=avg(grads), accuracy=acc)
 
@@ -148,7 +148,7 @@ def val(args, model, device, val_loader, epoch, criterion,
             correct += pred.eq(labels.view_as(pred)).sum().item()
 
     if metrics_writer:
-        acc = correct / len(val_loader.dataset)
+        acc = correct / len(val_loader.sampler)
         record_metrics(metrics_writer, epoch, 'val', loss=avg(losses),
                 accuracy=acc)
 

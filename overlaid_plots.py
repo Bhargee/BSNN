@@ -3,13 +3,15 @@ from os import listdir
 from os.path import basename, normpath, join
 
 import matplotlib.pyplot as plt
-import seaborn as sns # TODO delete?
+import matplotlib.ticker as ticker
 from tensorflow.core.util import event_pb2
 from tensorflow.data import TFRecordDataset
 
-TF_TAGS = ['train/loss', 'test/accuracy', 'val/loss', 'test/loss',
-        'train/accuracy', 'val/accuracy']
-
+TF_TAGS = ['train/loss', 'val/loss', 'test/loss',
+           'train/accuracy', 'val/accuracy', 'test/accuracy']
+COLORS = [
+    'green', 'blue', 'purple', 'orange' 'red', 'black'
+]
 
 def _parse(f):
     def get_tag(event):
@@ -32,34 +34,56 @@ def _parse(f):
     return vals
 
 
-def _graph(events):
-    def plot_matching(tag_suffix):
+def _graph(events, outfile=None):
+    def name(logfile):
+        return ','.join(basename(logfile).split('_')[2:4])
+
+    def style(tag):
+        prefix, _ = tag.split('/')
+        if prefix == 'train':
+            return '-'
+        elif prefix == 'val':
+            return '--'
+        else:
+            return '-.'
+
+    def plot_matching(tag_suffix, axis):
         logfiles = events.keys()
         for tag in TF_TAGS:
-            for lf in logfiles:
+            for lf,i in zip(logfiles, range(len(logfiles))):
                 if tag_suffix in tag and tag in events[lf] and len(events[lf][tag]) > 0:
-                    if len(events[lf][tag]) == 1:
-                        plt.plot(events[lf][tag], 'ro', label=f'{lf}-{tag}')
-                    else:
-                        plt.plot(events[lf][tag], label=f'{lf}-{tag}')
+                    axis.plot(events[lf][tag], label=f'{name(lf)}|{tag}',
+                            color=COLORS[i], linestyle=style(tag))
 
-        plt.legend()
+        axis.set_title(tag_suffix)
+        if tag_suffix == 'loss':
+            axis.legend(loc='upper right', ncol=2, prop={'size':9})
+        else:
+            axis.legend(loc='lower right', ncol=2, prop={'size':9})
+
+    fig, (ax1, ax2) = plt.subplots(1,2, figsize=(6.4*2+4, 4.8*2))
+    plot_matching('loss', ax1)
+    plot_matching('accuracy', ax2)
+    if outfile:
+        plt.savefig(f'{outfile}.png')
+    else:
         plt.show()
 
-    plot_matching('loss')
-    plot_matching('accuracy')
 
-
-def main(logdirs):
+def main(logdirs, outfile=None):
     # first get the single file in each directory
     files = {basename(normpath(ld)): join(ld, listdir(ld)[0]) for ld in logdirs}
     # then, get parsed events for each file
     events = {exp_name: _parse(f) for exp_name, f in files.items()}
-    _graph(events)
+    _graph(events, outfile)
 
 
 if __name__ == '__main__':
     parser = ArgumentParser('Plot train/val/loss loss and accuracy curves')
     parser.add_argument('logdirs', nargs='+', help='paths to tensorboard logdirs')
+    parser.add_argument('--outfile', '-o', default=None)
     a = parser.parse_args()
-    main(a.logdirs)
+    if len(a.logdirs) > len(COLORS):
+        print(f'can\'t accept more than {len(COLORS)} inputs')
+    else:
+        main(a.logdirs, a.outfile)
