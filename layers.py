@@ -42,16 +42,19 @@ class _GumbelLayer(nn.Module):
     def sample(self, p):
         if self.training or self.need_grads:
             # sample relaxed bernoulli dist
-            return self._gumbel_softmax(p) 
+            return self._st_gumbel_softmax(p) 
         else:
             return torch.bernoulli(p).to(self.inner.weight.device)
 
 
-    def _gumbel_softmax(self, p):
-        y1 = exp(( log(p) + self._sample_gumbel_dist(p.shape)) / self.temp.val)
-        sum_all = y1 + exp(( log(1-p) + self._sample_gumbel_dist(p.shape))
-                / self.temp.val)
-        return y1 / sum_all
+    def _st_gumbel_softmax(self, p):
+        g1 = self._sample_gumbel_dist(p.shape)
+        g2 = self._sample_gumbel_dist(p.shape)
+        p_term = exp((log(p) + g1) / self.temp.val)
+        q_term = exp((log(1-p) + g2) / self.temp.val)
+        y_soft = p_term / (p_term + q_term)
+        y_hard = torch.argmax(torch.stack((q_term, p_term)), dim=0)
+        return y_hard - y_soft.detach() + y_soft
         
         
     def _sample_gumbel_dist(self, input_size):
