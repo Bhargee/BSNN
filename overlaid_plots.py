@@ -36,7 +36,8 @@ def _parse(f):
 
 def _graph(events, outfile=None):
     def name(logfile):
-        return ','.join(basename(logfile).split('_')[2:4])
+        parts = basename(logfile).split('_')#[2:4]
+        return ','.join([parts[2],parts[3], parts[-1]])
 
     def style(tag):
         prefix, _ = tag.split('/')

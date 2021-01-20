@@ -173,9 +173,10 @@ def test(args, model, device, test_loader, epoch, criterion, num_labels,
 
     test_loss = avg(losses)
     log_test(test_loss, correct, len(test_loader.dataset), conf_mat)
-    acc = correct/len(test_loader.dataset)
-    record_metrics(metrics_writer, epoch, 'test', loss=test_loss,
-            accuracy=acc)
+    if metrics_writer:
+        acc = correct/len(test_loader.dataset)
+        record_metrics(metrics_writer, epoch, 'test', loss=test_loss,
+                accuracy=acc)
 
 
 def get_temp_scheduler(temps, args):
