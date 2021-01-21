@@ -48,6 +48,10 @@ class Parser():
 
         self.p.add_argument('--inference-passes', '-i', type=int, default=10,
                 help='number of forward passes during test')
+        self.p.add_argument('--training-passes', type=int, default=1)
+        self.p.add_argument('--val-passes', '-v', type=int, default=1)
+        self.p.add_argument('--val-gumbel', action='store_true',
+                default=False)
 
         self.p.add_argument('--orthogonal', action='store_true', default=False)
         self.p.add_argument('--optimizer', '-o', type=str, default='adam')
