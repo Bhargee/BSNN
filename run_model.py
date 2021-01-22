@@ -110,7 +110,7 @@ def train(args, model, device, train_loader, optimizer, epoch, criterion,
                 out = F.softmax(model(inputs), dim=-1)
             else:
                 out += F.softmax(model(inputs), dim=-1)
-        out = out / args.training_passes
+        out = torch.clamp(out / args.training_passes, min=1e-5)
         pred = out.argmax(dim=1)
 
         loss = criterion(torch.log(out), labels)
@@ -158,7 +158,7 @@ def val(args, model, device, val_loader, epoch, criterion,
                     out = F.softmax(model(inputs), dim=-1)
                 else:
                     out += F.softmax(model(inputs), dim=-1)
-            out = out / args.val_passes
+            out = torch.clamp((out / args.val_passes), min=1e-5)
 
             pred = out.argmax(dim=1)
             losses.append(criterion(torch.log(out), labels).sum().item())
@@ -185,7 +185,7 @@ def test(args, model, device, test_loader, epoch, criterion, num_labels,
                     out = F.softmax(model(inputs), dim=-1)
                 else:
                     out += F.softmax(model(inputs), dim=-1)
-            out = out / args.inference_passes
+            out = torch.clamp(out / args.inference_passes, min=1e-5)
             pred = out.argmax(dim=1)
             losses.append(criterion(torch.log(out), labels).sum().item())
             correct += pred.eq(labels.view_as(pred)).sum().item()
