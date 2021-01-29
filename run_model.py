@@ -223,6 +223,10 @@ def setup_logging(args):
 
 def run_model(model, optimizer, start_epoch, args, device, train_loader, 
                  val_loader, test_loader, num_labels):
+    if args.st:
+        L.Forward_Onehot = True
+    else:
+        L.Forward_Onehot = False
     criterion = nn.NLLLoss()
     setup_logging(args)
     metrics_writer = None

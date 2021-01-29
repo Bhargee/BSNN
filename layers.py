@@ -5,8 +5,9 @@ from torch import nn
 from torch import exp, log
 
 from optim import TempVar
- 
-class _GumbelLayer(nn.Module):
+
+class GumbelLayer(nn.Module):
+    Forward_Onehot = False
     ''' 
     Base class for all gumbel-stochastic layers
     '''
@@ -17,7 +18,7 @@ class _GumbelLayer(nn.Module):
         norm:
            batch norm object
         '''
-        super(_GumbelLayer, self).__init__()
+        super(GumbelLayer, self).__init__()
         self.inner = inner
         self.need_grads = False
         if norm:
@@ -48,11 +49,17 @@ class _GumbelLayer(nn.Module):
 
 
     def _gumbel_softmax(self, p):
-        y1 = exp(( log(p) + self._sample_gumbel_dist(p.shape)) / self.temp.val)
-        sum_all = y1 + exp(( log(1-p) + self._sample_gumbel_dist(p.shape))
-                / self.temp.val)
-        return y1 / sum_all
-        
+        g1 = self._sample_gumbel_dist(p.shape)
+        g2 = self._sample_gumbel_dist(p.shape)
+        p_term = exp((log(p) + g1) / self.temp.val)
+        q_term = exp((log(1-p) + g2) / self.temp.val)
+        y_soft = p_term / (p_term + q_term)
+        if GumbelLayer.Forward_Onehot:
+            y_hard = torch.argmax(torch.stack((q_term, p_term)), dim=0)
+            return y_hard - y_soft.detach() + y_soft
+        else:
+            return y_soft
+ 
         
     def _sample_gumbel_dist(self, input_size):
         if self.inner.weight.device == torch.device('cpu'):
@@ -63,7 +70,7 @@ class _GumbelLayer(nn.Module):
         return -log(-log(u))
 
 
-class Linear(_GumbelLayer):
+class Linear(GumbelLayer):
     def __init__(self, input_dim, output_dim, norm=False):
         inner = nn.Linear(input_dim, output_dim, bias=False)
         nn.init.orthogonal_(inner.weight)
@@ -71,7 +78,7 @@ class Linear(_GumbelLayer):
         super(Linear, self).__init__(inner, norm_obj)
 
 
-class Conv2d(_GumbelLayer):
+class Conv2d(GumbelLayer):
     def __init__(self, inc, outc, norm=False, **kwargs):
         inner = nn.Conv2d(inc, outc, **kwargs)
         norm_obj = nn.BatchNorm2d(outc) if norm else None

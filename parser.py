@@ -53,6 +53,8 @@ class Parser():
         self.p.add_argument('--val-gumbel', action='store_true',
                 default=False)
 
+        self.p.add_argument('--st', default=False, action='store_true')
+
         self.p.add_argument('--orthogonal', action='store_true', default=False)
         self.p.add_argument('--optimizer', '-o', type=str, default='adam')
         self.p.add_argument('--adjust-lr', action='store_true')
