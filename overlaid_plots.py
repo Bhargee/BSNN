@@ -2,6 +2,8 @@ from argparse import ArgumentParser
 from os import listdir
 from os.path import basename, normpath, join
 
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from tensorflow.core.util import event_pb2
