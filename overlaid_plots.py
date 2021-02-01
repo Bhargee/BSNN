@@ -12,7 +12,7 @@ from tensorflow.data import TFRecordDataset
 TF_TAGS = ['train/loss', 'val/loss', 'test/loss',
            'train/accuracy', 'val/accuracy', 'test/accuracy']
 COLORS = [
-    'green', 'blue', 'purple', 'orange' 'red', 'black'
+    'green', 'blue', 'purple', 'orange', 'red', 'black'
 ]
 
 def _parse(f):
