@@ -109,7 +109,7 @@ def train(args, model, device, train_loader, optimizer, epoch, criterion,
             if out == None:
                 out = F.softmax(model(inputs), dim=-1)
             else:
-                out += F.softmax(model(inputs), dim=-1)
+                out = torch.add(out, F.softmax(model(inputs), dim=-1))
         out = torch.clamp(out / args.training_passes, min=1e-5)
         pred = out.argmax(dim=1)
 
