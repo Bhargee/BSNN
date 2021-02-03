@@ -8,6 +8,7 @@ from sklearn.metrics import confusion_matrix
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 
 from optim import ExponentialScheduler, ConstScheduler, LinearScheduler
@@ -103,13 +104,19 @@ def train(args, model, device, train_loader, optimizer, epoch, criterion,
     for batch_idx, (inputs, labels) in enumerate(train_loader):
         inputs, labels = inputs.float().to(device), labels.long().to(device)
         optimizer.zero_grad()
-        out = model(inputs)
+        out = None
+        for _ in range(args.training_passes):
+            if out == None:
+                out = F.softmax(model(inputs), dim=-1)
+            else:
+                out = torch.add(out, F.softmax(model(inputs), dim=-1))
+        out = torch.clamp(out / args.training_passes, min=1e-5)
         pred = out.argmax(dim=1)
-        loss = criterion(out, labels)
 
+        loss = criterion(torch.log(out), labels)
         loss.backward()
-
         losses.append(loss.item())
+
         temps.append(avg(model_temps(model)))
         grads.append(avg(model_grads(model)))
         correct += pred.eq(labels.view_as(pred)).sum().item()
@@ -136,15 +143,25 @@ def train(args, model, device, train_loader, optimizer, epoch, criterion,
 
 def val(args, model, device, val_loader, epoch, criterion,
         metrics_writer=None):
-    model.eval()
+    if args.val_gumbel:
+        model.train()
+    else:
+        model.eval()
     losses = []
     correct = 0
     with torch.no_grad():
         for inputs, labels in val_loader:
             inputs, labels = inputs.float().to(device), labels.long().to(device)
-            out = model(inputs)
+            out = None
+            for _ in range(args.val_passes):
+                if out == None:
+                    out = F.softmax(model(inputs), dim=-1)
+                else:
+                    out += F.softmax(model(inputs), dim=-1)
+            out = torch.clamp((out / args.val_passes), min=1e-5)
+
             pred = out.argmax(dim=1)
-            losses.append(criterion(out, labels).sum().item())
+            losses.append(criterion(torch.log(out), labels).sum().item())
             correct += pred.eq(labels.view_as(pred)).sum().item()
 
     if metrics_writer:
@@ -162,12 +179,15 @@ def test(args, model, device, test_loader, epoch, criterion, num_labels,
     with torch.no_grad():
         for inputs, labels in test_loader:
             inputs, labels = inputs.float().to(device), labels.long().to(device)
-            outputs = []
+            out = None
             for _ in range(args.inference_passes):
-                outputs.append(model(inputs))
-            mean_output = torch.mean(torch.stack(outputs), dim=0)
-            pred = mean_output.argmax(dim=1)
-            losses.append(criterion(mean_output, labels).sum().item())
+                if out == None:
+                    out = F.softmax(model(inputs), dim=-1)
+                else:
+                    out += F.softmax(model(inputs), dim=-1)
+            out = torch.clamp(out / args.inference_passes, min=1e-5)
+            pred = out.argmax(dim=1)
+            losses.append(criterion(torch.log(out), labels).sum().item())
             correct += pred.eq(labels.view_as(pred)).sum().item()
             conf_mat += confusion_matrix(labels.cpu().numpy(), pred.cpu().numpy(), labels=range(num_labels))
 
@@ -203,7 +223,11 @@ def setup_logging(args):
 
 def run_model(model, optimizer, start_epoch, args, device, train_loader, 
                  val_loader, test_loader, num_labels):
-    criterion = nn.CrossEntropyLoss()
+    if args.st:
+        L.Forward_Onehot = True
+    else:
+        L.Forward_Onehot = False
+    criterion = nn.NLLLoss()
     setup_logging(args)
     metrics_writer = None
     if not args.no_log:
