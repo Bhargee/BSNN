@@ -22,7 +22,11 @@ def get_data(args):
         return mnist(resize=resize, batch_size=batch_size)
 
     elif args.dataset == 'cifar10':
-        return cifar10(args.batch_size, num_workers=5)
+        batch_size = args.batch_size
+        assert batch_size <= 256 or batch_size % 128 == 0
+        if batch_size >= 256 and args.training_passes > 1:
+            batch_size = 128
+        return cifar10(batch_size, num_workers=5)
 
     elif args.dataset == 'svhn':
         return svhn(args.batch_size, num_workers=5)
