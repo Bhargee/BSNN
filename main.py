@@ -24,7 +24,7 @@ def get_data(args):
     elif args.dataset == 'cifar10':
         batch_size = args.batch_size
         assert batch_size <= 256 or batch_size % 128 == 0
-        if batch_size >= 256 and args.training_passes > 1:
+        if batch_size > 256 or (batch_size >= 256 and args.training_passes > 1):
             batch_size = 128
         return cifar10(batch_size, num_workers=5)
 
