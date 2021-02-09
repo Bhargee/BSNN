@@ -123,23 +123,23 @@ def train(args, model, device, train_loader, optimizer, epoch, criterion,
         correct += pred.eq(labels.view_as(pred)).sum().item()
 
         if (batch_idx+1) % acc_steps == 0:
-            optimizer.step()
-            optimizer.zero_grad()
-
             temps.append(avg(model_temps(model)))
             grads.append(avg(model_grads(model)))
 
-        if batch_idx % 10 == 0:
-            t = avg(model_temps(model))
-            inputs_seen = batch_idx * len(inputs)
-            inputs_tot = len(train_loader.dataset)
-            if train_loader.sampler:
-                try:
-                    inputs_tot = len(train_loader.sampler.indices)
-                except:
-                    inputs_tot = len(train_loader.sampler)
-            pct = 100. * batch_idx / len(train_loader)
-            log_train_step(model, epoch, inputs_seen, inputs_tot, pct, loss.item(), t)
+            if ((batch_idx+1)/acc_steps) % 10 == 0:
+                t = avg(model_temps(model))
+                inputs_seen = (batch_idx+1) * len(inputs)
+                inputs_tot = len(train_loader.dataset)
+                if train_loader.sampler:
+                    try:
+                        inputs_tot = len(train_loader.sampler.indices)
+                    except:
+                        inputs_tot = len(train_loader.sampler)
+                pct = 100. * inputs_seen/inputs_tot
+                log_train_step(model, epoch, inputs_seen, inputs_tot, pct, loss.item(), t)
+
+            optimizer.step()
+            optimizer.zero_grad()
 
     if metrics_writer:
         acc = correct/len(train_loader.sampler)
