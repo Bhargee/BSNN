@@ -11,8 +11,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 
-from optim import ExponentialScheduler, ConstScheduler, LinearScheduler
-import layers as L
+from src.optim import ExponentialScheduler, ConstScheduler, LinearScheduler
+import src.layers as L
 
 def exp_name(args): # TODO take `--resume` into account
     m,d,lr,e,o  = args.model,args.dataset,args.lr,args.epochs,args.optimizer
