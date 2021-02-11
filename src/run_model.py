@@ -101,9 +101,13 @@ def train(args, model, device, train_loader, optimizer, epoch, criterion,
     losses = []
     temps = []
     grads = []
+    acc_steps = 1
+    if args.batch_size > 256 or (args.batch_size >= 256 and args.training_passes > 1):
+        acc_steps = args.batch_size // 128
+    optimizer.zero_grad()
+
     for batch_idx, (inputs, labels) in enumerate(train_loader):
         inputs, labels = inputs.float().to(device), labels.long().to(device)
-        optimizer.zero_grad()
         out = None
         for _ in range(args.training_passes):
             if out == None:
@@ -113,27 +117,29 @@ def train(args, model, device, train_loader, optimizer, epoch, criterion,
         out = torch.clamp(out / args.training_passes, min=1e-5)
         pred = out.argmax(dim=1)
 
-        loss = criterion(torch.log(out), labels)
+        loss = criterion(torch.log(out), labels) / acc_steps
         loss.backward()
         losses.append(loss.item())
-
-        temps.append(avg(model_temps(model)))
-        grads.append(avg(model_grads(model)))
         correct += pred.eq(labels.view_as(pred)).sum().item()
 
-        optimizer.step() 
+        if (batch_idx+1) % acc_steps == 0:
+            temps.append(avg(model_temps(model)))
+            grads.append(avg(model_grads(model)))
 
-        if batch_idx % 10 == 0:
-            t = avg(model_temps(model))
-            inputs_seen = batch_idx * len(inputs)
-            inputs_tot = len(train_loader.dataset)
-            if train_loader.sampler:
-                try:
-                    inputs_tot = len(train_loader.sampler.indices)
-                except:
-                    inputs_tot = len(train_loader.sampler)
-            pct = 100. * batch_idx / len(train_loader)
-            log_train_step(model, epoch, inputs_seen, inputs_tot, pct, loss.item(), t)
+            if ((batch_idx+1)/acc_steps) % 10 == 0:
+                t = avg(model_temps(model))
+                inputs_seen = (batch_idx+1) * len(inputs)
+                inputs_tot = len(train_loader.dataset)
+                if train_loader.sampler:
+                    try:
+                        inputs_tot = len(train_loader.sampler.indices)
+                    except:
+                        inputs_tot = len(train_loader.sampler)
+                pct = 100. * inputs_seen/inputs_tot
+                log_train_step(model, epoch, inputs_seen, inputs_tot, pct, loss.item(), t)
+
+            optimizer.step()
+            optimizer.zero_grad()
 
     if metrics_writer:
         acc = correct/len(train_loader.sampler)
@@ -247,6 +253,7 @@ def run_model(model, optimizer, start_epoch, args, device, train_loader,
         logging.info("Using device: "+device.type + str(device.index))
     else:
         logging.info("Using device: "+device.type)
+
 
     for epoch in range(start_epoch, start_epoch + args.epochs):
         train(args, model, device, train_loader, optimizer, epoch, criterion,
