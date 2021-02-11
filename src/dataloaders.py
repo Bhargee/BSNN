@@ -112,9 +112,9 @@ def cifar10(batch_size, num_workers=1):
         normalize
     ])
 
-    trainset = CIFAR10(root='./CIFAR10_DATA', train=True, download=True,
+    trainset = CIFAR10(root='/scratch/bsm92/CIFAR10_DATA', train=True, download=True,
                         transform=train_transform)
-    testset = CIFAR10(root='./CIFAR10_DATA', train=False, download=True,
+    testset = CIFAR10(root='/scratch/bsm92/CIFAR10_DATA', train=False, download=True,
                         transform=test_transform)
 
     train_sampler, val_sampler = _get_train_val_samplers('cifar10', trainset)

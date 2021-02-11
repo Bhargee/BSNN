@@ -4,7 +4,7 @@ import torch
 from torch import nn
 from torch import exp, log
 
-from optim import TempVar
+from src.optim import TempVar
 
 class GumbelLayer(nn.Module):
     Forward_Onehot = False

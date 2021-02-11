@@ -1,9 +1,9 @@
 import torch
 
-from dataloaders import *
-from models import resnet, vgg, sresnet
-from parser import Parser
-from run_model import run_model
+from src.dataloaders import *
+from models import resnet, sresnet
+from src.parser import Parser
+from src.run_model import run_model
 
 
 NUM_LABELS = {
@@ -55,9 +55,6 @@ def main():
         else:
             constructor = getattr(sresnet, args.model)
         model = constructor().to(device)
-    elif 'vgg' in args.model:
-        constructor = getattr(vgg, args.model)
-        model = constructor(not args.deterministic, num_labels, args.orthogonal).to(device)
 
     if args.optimizer == 'adam':
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)  

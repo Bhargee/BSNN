@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import layers as L
+import src.layers as L
 
 RELU = False
 

@@ -1,6 +1,6 @@
 import argparse
 
-from optim import *
+from src.optim import *
 
 class Parser():
     def __init__(self):
