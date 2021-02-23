@@ -1,7 +1,7 @@
 import torch
 
 from src.dataloaders import *
-from models import resnet, sresnet
+from models import resnet, sresnet, vgg
 from src.parser import Parser
 from src.run_model import run_model
 
@@ -23,9 +23,9 @@ def get_data(args):
 
     elif args.dataset == 'cifar10':
         batch_size = args.batch_size
-        assert batch_size <= 256 or batch_size % 128 == 0
+        assert batch_size <= 256 or batch_size % 64 == 0
         if batch_size > 256 or (batch_size >= 256 and args.training_passes > 1):
-            batch_size = 128
+            batch_size = 16
         return cifar10(batch_size, num_workers=5)
 
     elif args.dataset == 'svhn':
@@ -55,6 +55,10 @@ def main():
         else:
             constructor = getattr(sresnet, args.model)
         model = constructor().to(device)
+
+    if 'vgg' in args.model:
+        constructor = getattr(vgg, args.model)
+        model = constructor(args.deterministic).to(device)
 
     if args.optimizer == 'adam':
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)  

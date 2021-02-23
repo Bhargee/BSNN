@@ -14,6 +14,7 @@ from torch.utils.tensorboard import SummaryWriter
 from src.optim import ExponentialScheduler, ConstScheduler, LinearScheduler
 import src.layers as L
 
+
 def exp_name(args): # TODO take `--resume` into account
     m,d,lr,e,o  = args.model,args.dataset,args.lr,args.epochs,args.optimizer
 
@@ -103,7 +104,7 @@ def train(args, model, device, train_loader, optimizer, epoch, criterion,
     grads = []
     acc_steps = 1
     if args.batch_size > 256 or (args.batch_size >= 256 and args.training_passes > 1):
-        acc_steps = args.batch_size // 128
+        acc_steps = args.batch_size // 16
     optimizer.zero_grad()
 
     for batch_idx, (inputs, labels) in enumerate(train_loader):
