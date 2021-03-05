@@ -104,6 +104,11 @@ class ResNet(nn.Module):
         return out
 
 
+    def predict(self, x):
+        out = self.forward(torch.unsqueeze(x,0))
+        return torch.argmax(out)
+
+
 def resnet18():
     return ResNet(BasicBlock, [2, 2, 2, 2])
 
