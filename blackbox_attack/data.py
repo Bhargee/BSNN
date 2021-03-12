@@ -14,3 +14,18 @@ def cifar10():
     test  = datasets.CIFAR10(_PATH,download=True,train=False,transform=trans)
     return train, test
 
+
+def mnist():
+    trans = transforms.Compose([
+        transforms.Resize(32),
+        transforms.ToTensor(),
+        transforms.Normalize((0.1307,), (0.3081,)) # TODO check if correct
+    ])
+
+    train = datasets.MNIST('/scratch/bsm92/MNIST_DATA/', train=True,
+            transform=trans, download=True) 
+    test = datasets.MNIST('/scratch/bsm92/MNIST_DATA/', train=False,
+            transform=trans, download=True)
+
+    return train, test
+ 

@@ -1,7 +1,7 @@
 import torch
 
 from src.dataloaders import *
-from models import resnet, sresnet, vgg
+from models import resnet, sresnet, vgg, lenet5
 from src.parser import Parser
 from src.run_model import run_model
 
@@ -17,9 +17,8 @@ NUM_LABELS = {
 
 def get_data(args):
     if args.dataset == 'mnist':
-        resize = args.resize_input
         batch_size = args.batch_size
-        return mnist(resize=resize, batch_size=batch_size)
+        return mnist(resize=True, batch_size=batch_size)
 
     elif args.dataset == 'cifar10':
         batch_size = args.batch_size
@@ -56,9 +55,12 @@ def main():
             constructor = getattr(sresnet, args.model)
         model = constructor().to(device)
 
-    if 'vgg' in args.model:
+    elif 'vgg' in args.model:
         constructor = getattr(vgg, args.model)
         model = constructor(args.deterministic).to(device)
+
+    if 'lenet' in args.model:
+        model = lenet5.LeNet5(True, not args.deterministic).to(device)
 
     if args.optimizer == 'adam':
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)  

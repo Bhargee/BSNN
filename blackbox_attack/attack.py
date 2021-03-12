@@ -5,14 +5,21 @@ import time
 import torch 
 from torchvision.utils import save_image
 
-from .data import cifar10
-from models import resnet
+from .data import cifar10, mnist
+from models import resnet, lenet5
+
+from blackbox_attack.signopt import OPT_attack_sign_SGD_v2 as signopt_attack
 
 
-def _attack(model, dataset, x0, y0, alpha=.2, beta=.001, iterations=1000):
-    if model.predict(x0) != y0:
-        print('incorrect classification, no need to attack')
-        return x0
+DATASETS = ['mnist', 'cifar10']
+ATTACKS  = ['opt', 'signopt']
+
+
+def _help(opts):
+    return f'\'{opts[0]}\' or \'{opts[1]}\''
+
+
+def opt_attack(model, dataset, x0, y0, alpha=.2, beta=.001, iterations=1000):
 
     num_samples = 1000
     best_theta, g_theta = None, float('inf')
@@ -175,58 +182,102 @@ def fine_grained_binary_search_local(model, x0, y0, theta, initial_lbd=1.0, tol=
     return lbd_hi, nquery
 
 
-def attack_cifar10(model, alpha=.2, beta=.001, num_attacks=100):
+def opt(model, dataset, idxs, alpha=.2, beta=.001):
     model.eval()
-    train, test = cifar10()
+    train, test = dataset()
     print(f'length of test set: {len(test)}')
 
     def single_attack(image, label):
         print(f'original label: {label}')
         print(f'predicted label: {model.predict(image)}')
-        adversarial = _attack(model, train, image, label, alpha=alpha,
+        adversarial = opt_attack(model, train, image, label, alpha=alpha,
                              beta=beta, iterations=1000)
-        save_image(image, 'original.png')
-        save_image(adversarial, 'adversarial.png')
+        # TODO remove this
+        #save_image(image, 'original.png')
+        #save_image(adversarial, 'adversarial.png')
         return torch.norm(adversarial-image)
 
-    print(f'running attck on {num_attacks} random CIFAR10 test images')
+    print(f'running attck on {len(idxs)} random CIFAR10 test images')
     print(f'alpha={alpha}, beta={beta}')
     total_distortion = 0.
 
-    samples = [6311, 6890, 663, 4242, 8376, 7961, 6634, 4969, 7808, 5866, 9558,
-            3578, 8268, 2281, 2289, 1553, 4104, 8725, 9861, 2407, 5081, 1618,
-            1208, 5409, 7735, 9171, 1649, 5796, 7113, 5180, 3350,9052, 7253,
-            8541, 4267, 1020, 8989, 230, 1528, 6534, 18, 8086, 3996, 1031,
-            3130, 9298, 3632, 3909, 2334, 8896, 7339, 1494, 5243, 8322, 8016,
-            1786, 9031, 4769, 8969, 5451, 8852, 3329, 9882, 8965, 9627, 4712,
-            7290, 9769, 6306, 5194, 3966, 4756, 3012, 3102, 540, 4260, 7807,
-            1471, 2133, 2450, 633, 1314, 8857, 6410, 8594, 4515, 8549, 3858,
-            3525, 6411, 4360, 7753, 7413, 684,3343, 6785, 7079, 2263]
-    samples = [4242] # TODO remove
-    for idx in samples:
+    for idx in idxs:
         image, label = test[idx]
         image = image.float()
+        if model.predict(image) != label:
+            continue
         print(f'image {idx}')
         total_distortion += single_attack(image, label)
 
-    avg_distortion = total_distortion/num_attacks
-    print(f'average distortion on {num_attacks} images: {avg_distortion}')
+    avg_distortion = total_distortion/len(idxs)
+    print(f'average distortion on {len(idxs)} images: {avg_distortion}')
+
+
+def signopt(model, dataset, idxs, alpha=.2, beta=.001):
+    model.eval()
+    model.predict_label = model.predict
+    train, test = dataset()
+    attack_obj = signopt_attack(model, train_dataset=train)
+
+    total_distortion = 0.
+
+    for idx in idxs:
+        image, label = test[idx]
+        image = image.float()
+        if model.predict(image) != label:
+            continue
+        print(f'image {idx}')
+        adversarial = attack_obj.attack_untargeted(image, label, alpha, beta)
+        if type(adversarial) == tuple:
+            continue
+        total_distortion  += torch.norm(adversarial-image)
+
+    avg_distortion = total_distortion/len(idxs)
+    print(f'average distortion on {len(idxs)} images: {avg_distortion}')
+
+
+def _construct_idxs(dataset, num_idxs):
+    _, test = dataset()
+    idxs = random.sample(range(len(test)), num_idxs)
+    del _
+    del test
+    return idxs
 
 
 def main():
     assert torch.cuda.is_available()
     p = ArgumentParser('Opt black box attack')
-    p.add_argument('model_class', help='resnet<n1n2>, for example')
-    p.add_argument('saved_params', help='saved weights for model_class')
-    # TODO below currently doesn't do anything, will need to change
-    p.add_argument('--stochastic', required=False, help='use BSNN model')
-    args = p.parse_args()
+    p.add_argument('attack',  help=_help(ATTACKS))
+    p.add_argument('dataset', help=_help(DATASETS))
+    p.add_argument('num_attacks', default=1, type=int, help='number of attacks')
+    p.add_argument('model_class',  help='resnet<n1n2>, for example')
+    p.add_argument('saved_params_det', help='saved det weights for model_class')
+    p.add_argument('saved_params_stoch', help='saved stoch weights for model_class')
 
-    constructor = getattr(resnet, args.model_class)
-    model = constructor()
-    model.load_state_dict(torch.load(args.saved_params))
-    with torch.no_grad():
-        attack_cifar10(model, alpha=5., beta=.001)
+    args = p.parse_args()
+    assert args.attack in ATTACKS
+    assert args.dataset in DATASETS
+
+    d = ({'cifar10': cifar10, 'mnist': mnist})[args.dataset]
+    model_class = resnet if 'resnet' in args.model_class else lenet5
+
+    # NOTE: currently this branch doesn't work
+    #  a better type system would be nice
+    if model_class == resnet:
+        constructor = getattr(resnet, args.model_class)
+        model = constructor()
+    else:
+        modes = [False, True]
+        params = {False: args.saved_params_det, True: args.saved_params_stoch}
+        constructor = lenet5.LeNet5
+        idxs = _construct_idxs(d, args.num_attacks)
+        for stochastic in modes:
+            print(f'Running {args.attack} with stochastic={stochastic}')
+            model = constructor(True, stochastic)
+            model.load_state_dict(torch.load(params[stochastic]))
+            proc = f'{args.attack}(model, d, idxs, alpha=5., beta=.001)'
+            with torch.no_grad():
+                eval(proc)
 
 
 if __name__ == '__main__':

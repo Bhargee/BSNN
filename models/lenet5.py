@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-import layers
+import src.layers as L
 
 
 class LeNet5(nn.Module):
@@ -10,20 +10,18 @@ class LeNet5(nn.Module):
     http://yann.lecun.com/exdb/publis/pdf/lecun-99.pdf
     Just using this to test out stochastic convolutions
     '''
-    def __init__(self, normalize, stochastic, device):
+    def __init__(self, normalize, stochastic):
         super(LeNet5, self).__init__()
         self.stochastic = stochastic
         if stochastic:
-            args = [device, normalize]
-
             # from linked paper top of page 4 and section 2.2
             module_list = [
-                layers.Conv2d(1, 6, 5, *args),
+                L.Conv2d(1, 6, norm=normalize,kernel_size=5),
                 nn.AvgPool2d(2),
-                layers.Conv2d(6, 16, 5, *args),
+                L.Conv2d(6, 16, norm=normalize,kernel_size=5),
                 nn.AvgPool2d(2),
-                layers.Conv2d(16, 120, 5, *args),
-                layers.Linear(120, 84, *args)
+                L.Conv2d(16, 120, norm=normalize, kernel_size=5),
+                L.Linear(120, 84, norm=normalize)
             ]
             self.linear_layer = nn.Linear(84, 10, bias=False)
             torch.nn.init.orthogonal_(self.linear_layer.weight)
@@ -57,3 +55,8 @@ class LeNet5(nn.Module):
                 x = x.reshape(x.shape[0], x.shape[1])
 
         return self.linear_layer(x)
+
+
+    def predict(self, x):
+        out = self.forward(torch.unsqueeze(x,0))
+        return torch.argmax(out)
